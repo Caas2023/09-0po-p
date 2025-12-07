@@ -1,0 +1,80 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LogiTrack CRM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+      }
+    </script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+      body {
+        font-family: 'Inter', sans-serif;
+        transition: background-color 0.3s, color 0.3s;
+      }
+      
+      /* HIGH CONTRAST INPUT FIX WITH DARK MODE SUPPORT */
+      input, select, textarea {
+        color: #0f172a; /* slate-900 */
+        background-color: #ffffff;
+      }
+
+      /* Dark Mode Overrides */
+      html.dark body {
+        background-color: #0f172a; /* slate-900 */
+        color: #f8fafc; /* slate-50 */
+      }
+      
+      html.dark input, html.dark select, html.dark textarea {
+        background-color: #1e293b !important; /* slate-800 */
+        color: #f8fafc !important; /* slate-50 */
+        border-color: #334155 !important; /* slate-700 */
+      }
+      
+      /* Fix for date inputs specific picker UI */
+      input[type="date"] {
+        color-scheme: light;
+      }
+      html.dark input[type="date"] {
+        color-scheme: dark;
+      }
+      
+      /* Ensure calendar icon is visible */
+      ::-webkit-calendar-picker-indicator {
+        opacity: 0.6;
+      }
+      html.dark ::-webkit-calendar-picker-indicator {
+        filter: invert(1);
+      }
+      
+      /* Placeholder contrast improvement */
+      ::placeholder {
+        color: #64748b !important; /* slate-500 */
+        opacity: 1;
+      }
+      
+      /* Auth Input Transparency Override */
+      .auth-input {
+        background-color: transparent !important;
+      }
+    </style>
+
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+    <script>
+      // Check for saved theme preference or system preference
+      if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    </script>
+  </body>
+</html>
