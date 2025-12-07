@@ -1,8 +1,7 @@
-
 import React, { useState } from 'react';
-import { Search, Filter, ClipboardList } from 'lucide-react';
+import { Search, Filter, ClipboardList, Trash2, AlertTriangle, X } from 'lucide-react';
 import { Client, ServiceRecord, User } from '../types';
-import { saveClient } from '../services/storageService';
+import { saveClient, deleteClient } from '../services/storageService';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -19,6 +18,11 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
     const [searchTerm, setSearchTerm] = useState('');
     const [filterCategory, setFilterCategory] = useState('Todos');
 
+    // Estado para controle do Modal de Exclusão
+    const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    // Estados do Formulário
     const [newClientName, setNewClientName] = useState('');
     const [newClientEmail, setNewClientEmail] = useState('');
     const [newClientPhone, setNewClientPhone] = useState('');
@@ -60,6 +64,23 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
         setNewClientCnpj('');
     };
 
+    // Função para confirmar e executar a exclusão
+    const confirmDelete = async () => {
+        if (!clientToDelete) return;
+        setIsDeleting(true);
+        try {
+            await deleteClient(clientToDelete.id);
+            toast.success('Cliente removido com sucesso.');
+            onRefresh(); // Atualiza a lista
+        } catch (error) {
+            toast.error('Erro ao remover cliente.');
+            console.error(error);
+        } finally {
+            setIsDeleting(false);
+            setClientToDelete(null); // Fecha o modal
+        }
+    };
+
     const filteredClients = clients.filter(client => {
         const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -75,7 +96,43 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
     };
 
     return (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6 animate-fade-in relative">
+            
+            {/* --- MODAL DE CONFIRMAÇÃO DE EXCLUSÃO --- */}
+            {clientToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-700 animate-slide-up">
+                        <div className="p-6 text-center">
+                            <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <AlertTriangle size={32} className="text-red-600 dark:text-red-500" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Excluir Cliente?</h3>
+                            <p className="text-slate-600 dark:text-slate-400 mb-6">
+                                Tem certeza que deseja remover <strong>{clientToDelete.name}</strong>? 
+                                <br/>Isso também pode afetar o histórico de serviços associados.
+                            </p>
+                            
+                            <div className="flex gap-3 justify-center">
+                                <button 
+                                    onClick={() => setClientToDelete(null)}
+                                    className="px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                    disabled={isDeleting}
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    onClick={confirmDelete}
+                                    className="px-5 py-2.5 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition-colors shadow-sm flex items-center gap-2"
+                                    disabled={isDeleting}
+                                >
+                                    {isDeleting ? 'Excluindo...' : 'Sim, Excluir'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Clientes</h1>
                 <button
@@ -182,13 +239,25 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
                                 onClick={() => navigate(`/clients/${client.id}`)}
                                 className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group relative"
                             >
-                                <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
+                                <div className="absolute top-4 right-4 flex items-center gap-2">
                                     <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-md border border-slate-200 dark:border-slate-600">
                                         {client.category || 'Sem Categoria'}
                                     </span>
+                                    
+                                    {/* Ícone de Exclusão (Lixeira) */}
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation(); // Impede a navegação
+                                            setClientToDelete(client);
+                                        }}
+                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-colors"
+                                        title="Excluir Cliente"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
                                 </div>
 
-                                <h3 className="text-lg font-semibold text-slate-800 dark:text-white group-hover:text-blue-600 mb-1 pr-20 truncate">{client.name}</h3>
+                                <h3 className="text-lg font-semibold text-slate-800 dark:text-white group-hover:text-blue-600 mb-1 pr-24 truncate">{client.name}</h3>
                                 {client.contactPerson && <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">Contato: {client.contactPerson}</p>}
 
                                 <div className="text-sm text-slate-500 dark:text-slate-400 space-y-1">
