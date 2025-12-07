@@ -1,4 +1,3 @@
-
 import { Client, ServiceRecord, ExpenseRecord, User, DatabaseConnection } from '../types';
 import { DatabaseAdapter } from './database/types';
 import { LocalStorageAdapter } from './database/LocalStorageAdapter';
@@ -181,6 +180,21 @@ export const saveClient = async (client: Client) => {
   saveList(STORAGE_KEYS.CLIENTS, list);
 };
 
+export const deleteClient = async (id: string) => {
+  // Chamada ao adaptador para exclusão
+  if (dbAdapter instanceof LocalStorageAdapter) {
+      await (dbAdapter as LocalStorageAdapter).deleteClient(id);
+  } else {
+      // Implementação futura para outros adaptadores (Supabase, Firebase) se necessário
+      console.warn("Delete implementado apenas para LocalStorage neste momento");
+  }
+
+  // Atualiza o espelho local para a UI reagir instantaneamente
+  const list = getList<Client>(STORAGE_KEYS.CLIENTS);
+  const newList = list.filter(c => c.id !== id);
+  saveList(STORAGE_KEYS.CLIENTS, newList);
+};
+
 // --- Services (Async Wrapper) ---
 
 export const getServices = async (): Promise<ServiceRecord[]> => {
@@ -250,15 +264,7 @@ export const getServicesByClient = async (clientId: string): Promise<ServiceReco
 export const getExpenses = async (): Promise<ExpenseRecord[]> => {
   const user = getCurrentUser();
   if (!user) return [];
-  // Only LocalStorageAdapter implements getExpenses effectively for now in this codebase context
-  // Ideally we add it to DatabaseAdapter interface.
-  // For now we assume we read from local or we extend adapter later.
-  // Let's rely on local storage for expenses as a fallback if adapter doesn't have it,
-  // BUT we should really add it to adapter.
-  // Given the task, let's use the adapter pattern properly.
-  // We will cast to any to avoid interface issues if we didn't update types.ts yet,
-  // but better: let's update types.ts first.
-  // Retaining local read for safety until types are updated.
+  // Retaining local read for safety until types are updated in adapter interface.
   return getList<ExpenseRecord>(STORAGE_KEYS.EXPENSES);
 };
 
