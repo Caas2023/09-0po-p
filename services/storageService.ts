@@ -170,6 +170,10 @@ export const getClientsSync = (): Client[] => {
 };
 
 export const saveClient = async (client: Client) => {
+  const user = getCurrentUser();
+  if (user && !client.ownerId) {
+    client.ownerId = user.id;
+  }
   await dbAdapter.saveClient(client);
   // Keep local sync for instant UI updates if we are in Hybrid mode (optional)
   const list = getList<Client>(STORAGE_KEYS.CLIENTS);
@@ -195,6 +199,10 @@ export const getServicesSync = (): ServiceRecord[] => {
 };
 
 export const saveService = async (service: ServiceRecord) => {
+  const user = getCurrentUser();
+  if (user) {
+    service.ownerId = user.id;
+  }
   await dbAdapter.saveService(service);
   const list = getList<ServiceRecord>(STORAGE_KEYS.SERVICES);
   list.push(service);
@@ -255,6 +263,10 @@ export const getExpenses = async (): Promise<ExpenseRecord[]> => {
 };
 
 export const saveExpense = async (expense: ExpenseRecord) => {
+  const user = getCurrentUser();
+  if (user) {
+    expense.ownerId = user.id;
+  }
   const list = getList<ExpenseRecord>(STORAGE_KEYS.EXPENSES);
   list.push(expense);
   saveList(STORAGE_KEYS.EXPENSES, list);

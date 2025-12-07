@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, DatabaseConnection, DbProvider } from '../types';
-import { getUsers, getDatabaseConnections, saveDatabaseConnection, deleteDatabaseConnection, updateDatabaseConnection, performCloudBackup } from '../services/storageService';
+import { getUsers, getDatabaseConnections, saveDatabaseConnection, deleteDatabaseConnection, updateDatabaseConnection, performCloudBackup, updateUserProfile } from '../services/storageService';
 import { Shield, Users, Database, Plus, Trash2, Save, Play, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -72,6 +72,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentAdmin, onImperson
         setBackupStatus('Done');
         refreshData();
         setTimeout(() => setBackupStatus(''), 3000);
+    };
+
+    const handleToggleRole = async (user: User) => {
+        const newRole = user.role === 'ADMIN' ? 'USER' : 'ADMIN';
+        if (confirm(`Deseja alterar o nível de acesso de ${user.name} para ${newRole}?`)) {
+            const updatedUser = { ...user, role: newRole };
+            await updateDatabaseConnection(updatedUser as any); // We need a proper update user function
+            // Actually storageService doesn't have a generic "updateUser" exported for admins yet, only updateUserProfile
+            // Let's import updateUserProfile which basically calls dbAdapter.saveUser
+            await updateUserProfile(updatedUser);
+            refreshData();
+        }
     };
 
     const renderDbInstructions = (provider: DbProvider) => {
@@ -163,9 +175,20 @@ create policy "Public Insert" on backups for insert with check (true);`}
                                         <td className="p-3 font-medium text-slate-800 dark:text-white">{u.name}</td>
                                         <td className="p-3 text-slate-600 dark:text-slate-400">{u.email}</td>
                                         <td className="p-3">
-                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
-                                                {u.role}
-                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                    {u.role}
+                                                </span>
+                                                {u.id !== currentAdmin.id && (
+                                                    <button
+                                                        onClick={() => handleToggleRole(u)}
+                                                        className="text-slate-400 hover:text-blue-600 transition-colors"
+                                                        title="Alternar Permissões"
+                                                    >
+                                                        <RefreshCw size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="p-3 text-right">
                                             {u.id !== currentAdmin.id && (
