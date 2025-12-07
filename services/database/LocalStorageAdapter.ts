@@ -1,4 +1,3 @@
-
 import { DatabaseAdapter } from './types';
 import { Client, ServiceRecord, User } from '../../types';
 
@@ -55,6 +54,13 @@ export class LocalStorageAdapter implements DatabaseAdapter {
         const list = this.getList<Client>(STORAGE_KEYS.CLIENTS);
         list.push(client);
         this.saveList(STORAGE_KEYS.CLIENTS, list);
+    }
+
+    // --- ADICIONADO: Método de Exclusão de Cliente ---
+    async deleteClient(id: string): Promise<void> {
+        const list = this.getList<Client>(STORAGE_KEYS.CLIENTS);
+        const newList = list.filter(c => c.id !== id);
+        this.saveList(STORAGE_KEYS.CLIENTS, newList);
     }
 
     // --- Services ---
