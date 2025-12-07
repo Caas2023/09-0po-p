@@ -34,6 +34,11 @@ export class FirebaseAdapter implements DatabaseAdapter {
         await updateDoc(doc(this.db, 'users', user.id), { ...user });
     }
 
+    // --- ADICIONADO: DELETE USER ---
+    async deleteUser(id: string): Promise<void> {
+        await deleteDoc(doc(this.db, 'users', id));
+    }
+
     // --- Clients ---
     async getClients(ownerId: string): Promise<Client[]> {
         const q = query(collection(this.db, 'clients'), where('ownerId', '==', ownerId));
@@ -47,7 +52,6 @@ export class FirebaseAdapter implements DatabaseAdapter {
         await setDoc(doc(this.db, 'clients', client.id), client);
     }
 
-    // --- ADICIONADO: DELETE CLIENTE ---
     async deleteClient(id: string): Promise<void> {
         await deleteDoc(doc(this.db, 'clients', id));
     }
@@ -69,7 +73,6 @@ export class FirebaseAdapter implements DatabaseAdapter {
         await updateDoc(doc(this.db, 'services', service.id), { ...service });
     }
 
-    // --- ADICIONADO: DELETE SERVIÇO ---
     async deleteService(id: string): Promise<void> {
         await deleteDoc(doc(this.db, 'services', id));
     }
