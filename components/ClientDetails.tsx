@@ -1,13 +1,15 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Client, ServiceRecord, PaymentMethod, User, ServiceStatus } from '../types';
-import { saveService, updateService, getServicesByClient, bulkUpdateServices } from '../services/storageService';
-import { ArrowLeft, Plus, Calendar, MapPin, Filter, FileSpreadsheet, X, Bike, ChevronDown, FileText, ShieldCheck, Pencil, DollarSign, CheckCircle, AlertCircle, PieChart, List, CheckSquare, Square, MoreHorizontal, User as UserIcon, Building, MinusSquare, Share2, Phone, Mail, Banknote, QrCode, CreditCard, MessageCircle, Loader2, Download, Table, FileDown, Package, Clock, XCircle, Activity } from 'lucide-react';
+// ADICIONE: deleteService na importação
+import { saveService, updateService, getServicesByClient, bulkUpdateServices, deleteService } from '../services/storageService';
+import { ArrowLeft, Plus, Calendar, MapPin, Filter, FileSpreadsheet, X, Bike, ChevronDown, FileText, ShieldCheck, Pencil, DollarSign, CheckCircle, AlertCircle, PieChart, List, CheckSquare, Square, MoreHorizontal, User as UserIcon, Building, MinusSquare, Share2, Phone, Mail, Banknote, QrCode, CreditCard, MessageCircle, Loader2, Download, Table, FileDown, Package, Clock, XCircle, Activity, Trash2, AlertTriangle } from 'lucide-react';
 // @ts-ignore
 import { jsPDF } from 'jspdf';
 // @ts-ignore
 import autoTable from 'jspdf-autotable';
 // @ts-ignore
 import html2canvas from 'html2canvas';
+import { toast } from 'sonner';
 
 interface ClientDetailsProps {
     client: Client;
@@ -407,6 +409,10 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     // Editing state
     const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
 
+    // Deleting state
+    const [serviceToDelete, setServiceToDelete] = useState<ServiceRecord | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
     // Form State
     const [serviceDate, setServiceDate] = useState(getLocalDateStr(new Date()));
     const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
@@ -470,6 +476,25 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         setServiceStatus(service.status || 'DONE');
         setShowForm(true);
         setActiveTab('services'); // Ensure we are on the form tab
+    };
+
+    // --- NOVA FUNÇÃO DE EXCLUSÃO ---
+    const confirmDeleteService = async () => {
+        if (!serviceToDelete) return;
+        setIsDeleting(true);
+        try {
+            await deleteService(serviceToDelete.id);
+            toast.success('Serviço removido com sucesso.');
+            // Atualiza a lista
+            const updatedList = await getServicesByClient(client.id);
+            setServices(updatedList);
+        } catch (error) {
+            toast.error('Erro ao remover serviço.');
+            console.error(error);
+        } finally {
+            setIsDeleting(false);
+            setServiceToDelete(null);
+        }
     };
 
     const handleTogglePayment = async (service: ServiceRecord) => {
@@ -943,7 +968,6 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         <div class="subheader">Gerado em: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</div>
         ${startDate && endDate ? `<div class="subheader">Período: ${new Date(startDate + 'T00:00:00').toLocaleDateString()} a ${new Date(endDate + 'T00:00:00').toLocaleDateString()}</div>` : ''}
 
-        <!-- Summary Table -->
         <div class="section-title">RESUMO GERAL</div>
         <table>
           <thead>
@@ -972,7 +996,6 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
           </tbody>
         </table>
 
-        <!-- Detail Table -->
         <div class="section-title">DETALHAMENTO DE SERVIÇOS</div>
         <table>
           <thead>
@@ -1085,6 +1108,41 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     return (
         <div className="space-y-6 animate-fade-in relative">
 
+            {/* --- MODAL DE EXCLUSÃO DE SERVIÇO --- */}
+            {serviceToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-700 animate-slide-up">
+                        <div className="p-6 text-center">
+                            <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <AlertTriangle size={32} className="text-red-600 dark:text-red-500" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Excluir Serviço?</h3>
+                            <p className="text-slate-600 dark:text-slate-400 mb-6">
+                                Tem certeza que deseja remover este serviço?
+                                <br />Esta ação não poderá ser desfeita.
+                            </p>
+
+                            <div className="flex gap-3 justify-center">
+                                <button
+                                    onClick={() => setServiceToDelete(null)}
+                                    className="px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                    disabled={isDeleting}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={confirmDeleteService}
+                                    className="px-5 py-2.5 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition-colors shadow-sm flex items-center gap-2"
+                                    disabled={isDeleting}
+                                >
+                                    {isDeleting ? 'Excluindo...' : 'Sim, Excluir'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Document Viewer Modal */}
             {viewingService && (
                 <ServiceDocumentModal
@@ -1155,8 +1213,8 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                         <button
                             onClick={() => setActiveTab('services')}
                             className={`pb-3 text-sm font-bold transition-all ${activeTab === 'services'
-                                    ? 'text-blue-700 dark:text-blue-400 border-b-2 border-blue-700 dark:border-blue-400'
-                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                                ? 'text-blue-700 dark:text-blue-400 border-b-2 border-blue-700 dark:border-blue-400'
+                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
                                 }`}
                         >
                             <div className="flex items-center gap-2">
@@ -1167,8 +1225,8 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                         <button
                             onClick={() => setActiveTab('financial')}
                             className={`pb-3 text-sm font-bold transition-all ${activeTab === 'financial'
-                                    ? 'text-emerald-700 dark:text-emerald-400 border-b-2 border-emerald-700 dark:border-emerald-400'
-                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                                ? 'text-emerald-700 dark:text-emerald-400 border-b-2 border-emerald-700 dark:border-emerald-400'
+                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
                                 }`}
                         >
                             <div className="flex items-center gap-2">
@@ -1337,8 +1395,8 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                                     type="button"
                                                     onClick={() => setPaymentMethod(method)}
                                                     className={`flex items-center justify-center px-4 py-2 rounded-lg border text-sm font-bold transition-all ${paymentMethod === method
-                                                            ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-600 text-blue-800 dark:text-blue-400'
-                                                            : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600'
+                                                        ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-600 text-blue-800 dark:text-blue-400'
+                                                        : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600'
                                                         }`}
                                                 >
                                                     {getPaymentMethodLabel(method)}
@@ -1715,8 +1773,8 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleTogglePayment(service); }}
                                                     className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all shadow-sm ${service.paid
-                                                            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800/50'
-                                                            : 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-800/50'
+                                                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800/50'
+                                                        : 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-800/50'
                                                         }`}
                                                     title={service.paid ? "Marcar como Pendente" : "Marcar como Pago"}
                                                 >
@@ -1749,6 +1807,14 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                                         title="Editar Corrida"
                                                     >
                                                         <Pencil size={18} />
+                                                    </button>
+                                                    {/* --- BOTÃO DE EXCLUIR SERVIÇO --- */}
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setServiceToDelete(service); }}
+                                                        className="text-slate-500 dark:text-slate-400 hover:text-red-700 dark:hover:text-red-400 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                                        title="Excluir Corrida"
+                                                    >
+                                                        <Trash2 size={18} />
                                                     </button>
                                                 </div>
                                             </td>
