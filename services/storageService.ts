@@ -51,7 +51,10 @@ const saveList = <T>(key: string, list: T[]) => {
 
 // --- User / Auth (Hybrid) ---
 
-export const getUsers = (): User[] => getList<User>(STORAGE_KEYS.USERS);
+// ATUALIZADO: Agora busca do adaptador (Banco de Dados) para listar no Admin Panel
+export const getUsers = async (): Promise<User[]> => {
+  return await dbAdapter.getUsers();
+};
 
 export const initializeData = async () => {
   // Check DB
@@ -78,7 +81,9 @@ export const initializeData = async () => {
 };
 
 export const updateUserProfile = async (user: User) => {
-  await dbAdapter.saveUser(user);
+  // ATUALIZADO: Usa updateUser em vez de saveUser para evitar conflitos de ID
+  await dbAdapter.updateUser(user);
+  
   // Update session if it's current user
   const current = getCurrentUser();
   if (current && current.id === user.id) {
@@ -101,7 +106,7 @@ export const completePasswordReset = async (email: string, code: string, newPass
   if (!user) return { success: false, message: 'Usuário não encontrado.' };
 
   user.password = newPass;
-  await dbAdapter.saveUser(user);
+  await dbAdapter.updateUser(user); // Atualizado para usar updateUser
   return { success: true };
 };
 
@@ -133,7 +138,7 @@ export const loginUser = async (email: string, pass: string): Promise<{ success:
   const user = users.find(u => u.email === email && u.password === pass);
 
   if (user) {
-    if (user.status === 'BLOCKED') return { success: false, message: 'Conta bloqueada.' };
+    if (user.status === 'BLOCKED') return { success: false, message: 'Conta bloqueada. Contate o administrador.' };
     localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(user));
     return { success: true, user };
   }
@@ -147,6 +152,11 @@ export const logoutUser = () => {
 export const getCurrentUser = (): User | null => {
   const data = localStorage.getItem(STORAGE_KEYS.SESSION);
   return data ? JSON.parse(data) : null;
+};
+
+// ADICIONADO: Exclusão de Usuário para Painel Admin
+export const deleteUser = async (id: string) => {
+  await dbAdapter.deleteUser(id);
 };
 
 // --- Clients (Async Wrapper) ---
@@ -180,19 +190,11 @@ export const saveClient = async (client: Client) => {
   saveList(STORAGE_KEYS.CLIENTS, list);
 };
 
-// --- NOVA FUNÇÃO DE EXCLUSÃO ---
+// ADICIONADO: Exclusão de Cliente
 export const deleteClient = async (id: string) => {
-  // Verifica se o adaptador possui o método deleteClient (caso a interface não tenha sido atualizada globalmente)
-  if ('deleteClient' in dbAdapter) {
-      await (dbAdapter as any).deleteClient(id);
-  } else if (dbAdapter instanceof LocalStorageAdapter) {
-      // Fallback explícito para LocalStorageAdapter
-      await (dbAdapter as LocalStorageAdapter).deleteClient(id);
-  } else {
-      console.warn("Delete não suportado completamente pelo adaptador atual sem atualização da interface.");
-  }
-
-  // Atualiza o espelho local (LocalStorage) para garantir que a UI reaja imediatamente
+  await dbAdapter.deleteClient(id);
+  
+  // Atualiza espelho local
   const list = getList<Client>(STORAGE_KEYS.CLIENTS);
   const newList = list.filter(c => c.id !== id);
   saveList(STORAGE_KEYS.CLIENTS, newList);
@@ -237,6 +239,16 @@ export const updateService = async (service: ServiceRecord) => {
   }
 };
 
+// ADICIONADO: Exclusão de Serviço
+export const deleteService = async (id: string) => {
+  await dbAdapter.deleteService(id);
+
+  // Atualiza espelho local
+  const list = getList<ServiceRecord>(STORAGE_KEYS.SERVICES);
+  const newList = list.filter(s => s.id !== id);
+  saveList(STORAGE_KEYS.SERVICES, newList);
+};
+
 // --- Bulk Operations ---
 export const bulkUpdateServices = async (updates: ServiceRecord[]) => {
   // Naive implementation: loop. Better DBs have batch ops.
@@ -267,8 +279,7 @@ export const getServicesByClient = async (clientId: string): Promise<ServiceReco
 export const getExpenses = async (): Promise<ExpenseRecord[]> => {
   const user = getCurrentUser();
   if (!user) return [];
-  // Only LocalStorageAdapter implements getExpenses effectively for now in this codebase context
-  // Ideally we add it to DatabaseAdapter interface.
+  // Retaining local read for safety until types are updated in adapter interface for expenses
   return getList<ExpenseRecord>(STORAGE_KEYS.EXPENSES);
 };
 
