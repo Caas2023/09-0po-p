@@ -1,6 +1,5 @@
-
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, setDoc, query, where, updateDoc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, setDoc, query, where, updateDoc, deleteDoc } from 'firebase/firestore';
 import { DatabaseAdapter } from './types';
 import { Client, ServiceRecord, User } from '../../types';
 
@@ -16,7 +15,7 @@ export class FirebaseAdapter implements DatabaseAdapter {
         console.log('Firebase initialized');
     }
 
-    // --- Users ---
+    // ... (outros métodos existentes: getUsers, saveUser, updateUser) ...
     async getUsers(): Promise<User[]> {
         const q = query(collection(this.db, 'users'));
         const querySnapshot = await getDocs(q);
@@ -48,7 +47,12 @@ export class FirebaseAdapter implements DatabaseAdapter {
         await setDoc(doc(this.db, 'clients', client.id), client);
     }
 
-    // --- Services ---
+    // --- ADICIONADO: DELETE NO FIREBASE ---
+    async deleteClient(id: string): Promise<void> {
+        await deleteDoc(doc(this.db, 'clients', id));
+    }
+
+    // ... (restante dos métodos: getServices, saveService, updateService) ...
     async getServices(ownerId: string): Promise<ServiceRecord[]> {
         const q = query(collection(this.db, 'services'), where('ownerId', '==', ownerId));
         const querySnapshot = await getDocs(q);
