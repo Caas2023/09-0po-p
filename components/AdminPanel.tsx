@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { User, DatabaseConnection, DbProvider } from '../types';
-import { getUsers, getDatabaseConnections, saveDatabaseConnection, deleteDatabaseConnection, updateDatabaseConnection, performCloudBackup, updateUserProfile } from '../services/storageService';
-import { Shield, Users, Database, Plus, Trash2, Save, Play, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { User, DatabaseConnection, DbProvider, UserStatus } from '../types';
+import { getUsers, updateUserProfile, deleteUser, getDatabaseConnections, saveDatabaseConnection, deleteDatabaseConnection, updateDatabaseConnection, performCloudBackup } from '../services/storageService';
+import { Shield, Users, Database, Plus, Trash2, RefreshCw, CheckCircle, XCircle, AlertTriangle, Lock, Unlock, Play } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface AdminPanelProps {
     currentAdmin: User;
@@ -11,34 +12,80 @@ interface AdminPanelProps {
 export const AdminPanel: React.FC<AdminPanelProps> = ({ currentAdmin, onImpersonate }) => {
     const [activeTab, setActiveTab] = useState<'USERS' | 'DATABASE'>('USERS');
     const [users, setUsers] = useState<User[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    
+    // Database Config State
     const [dbConnections, setDbConnections] = useState<DatabaseConnection[]>([]);
-
-    // DB Form
     const [showDbForm, setShowDbForm] = useState(false);
     const [dbName, setDbName] = useState('');
     const [dbProvider, setDbProvider] = useState<DbProvider>('WEBHOOK');
     const [dbUrl, setDbUrl] = useState('');
     const [dbKey, setDbKey] = useState('');
-
     const [backupStatus, setBackupStatus] = useState('');
+
+    // Modal State
+    const [confirmModal, setConfirmModal] = useState<{
+        isOpen: boolean;
+        action: 'DELETE' | 'BLOCK' | 'UNBLOCK' | null;
+        user: User | null;
+    }>({ isOpen: false, action: null, user: null });
 
     useEffect(() => {
         refreshData();
     }, []);
 
     const refreshData = async () => {
-        const usersList = await getUsers();
-        setUsers(usersList);
-        // TODO: Implement getDatabaseConnections async in storageService if needed, 
-        // for now it's likely local but good to be safe or if we are strict. 
-        // Actually error said getDatabaseConnections not exported. I need to make sure it is exported.
-        // Assuming keys are stored locally for now or we need async adapter support for them too?
-        // Let's assume sync for now as they are config, or we need to implement it in adapter. 
-        // Wait, the error said `Module '"../services/storageService"' has no exported member 'getDatabaseConnections'`. 
-        // I probably missed exporting them in storageService.ts.
-        // I better fix storageService exports first.
-        setDbConnections(getDatabaseConnections());
+        setIsLoading(true);
+        try {
+            const usersList = await getUsers();
+            setUsers(usersList);
+            setDbConnections(getDatabaseConnections());
+        } catch (error) {
+            console.error("Erro ao carregar dados:", error);
+            toast.error("Erro ao carregar lista de usuários.");
+        } finally {
+            setIsLoading(false);
+        }
     };
+
+    // --- Ações de Usuário ---
+
+    const openConfirmModal = (user: User, action: 'DELETE' | 'BLOCK' | 'UNBLOCK') => {
+        if (user.id === currentAdmin.id) {
+            toast.error("Você não pode realizar esta ação em sua própria conta.");
+            return;
+        }
+        setConfirmModal({ isOpen: true, action, user });
+    };
+
+    const handleConfirmAction = async () => {
+        const { action, user } = confirmModal;
+        if (!user || !action) return;
+
+        try {
+            if (action === 'DELETE') {
+                await deleteUser(user.id);
+                toast.success(`Usuário ${user.name} excluído com sucesso.`);
+            } else if (action === 'BLOCK') {
+                const updatedUser: User = { ...user, status: 'BLOCKED' };
+                await updateUserProfile(updatedUser);
+                toast.success(`Acesso de ${user.name} bloqueado.`);
+            } else if (action === 'UNBLOCK') {
+                const updatedUser: User = { ...user, status: 'ACTIVE' };
+                await updateUserProfile(updatedUser);
+                toast.success(`Acesso de ${user.name} liberado.`);
+            }
+            
+            await refreshData();
+        } catch (error) {
+            toast.error("Falha ao executar a ação.");
+            console.error(error);
+        } finally {
+            setConfirmModal({ isOpen: false, action: null, user: null });
+        }
+    };
+
+    // --- Ações de Banco de Dados ---
 
     const handleAddDb = (e: React.FormEvent) => {
         e.preventDefault();
@@ -67,23 +114,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentAdmin, onImperson
     };
 
     const handleRunBackup = async () => {
-        setBackupStatus('Running...');
+        setBackupStatus('Executando...');
         await performCloudBackup();
-        setBackupStatus('Done');
+        setBackupStatus('Concluído');
         refreshData();
         setTimeout(() => setBackupStatus(''), 3000);
-    };
-
-    const handleToggleRole = async (user: User) => {
-        const newRole = user.role === 'ADMIN' ? 'USER' : 'ADMIN';
-        if (confirm(`Deseja alterar o nível de acesso de ${user.name} para ${newRole}?`)) {
-            const updatedUser = { ...user, role: newRole };
-            await updateDatabaseConnection(updatedUser as any); // We need a proper update user function
-            // Actually storageService doesn't have a generic "updateUser" exported for admins yet, only updateUserProfile
-            // Let's import updateUserProfile which basically calls dbAdapter.saveUser
-            await updateUserProfile(updatedUser);
-            refreshData();
-        }
     };
 
     const renderDbInstructions = (provider: DbProvider) => {
@@ -92,31 +127,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentAdmin, onImperson
                 return (
                     <div className="text-xs text-slate-600 dark:text-slate-400 space-y-3 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
                         <h5 className="font-bold text-slate-700 dark:text-slate-300">Passo a Passo Supabase:</h5>
-                        <ol className="list-decimal list-inside space-y-1 ml-1">
-                            <li>Crie um projeto no <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">Supabase</a>.</li>
-                            <li>Vá no <strong>SQL Editor</strong> e cole o código abaixo (depois clique em RUN):</li>
-                            <pre className="bg-slate-200 dark:bg-slate-900 p-2 rounded overflow-x-auto text-[10px] my-1 font-mono text-slate-800 dark:text-slate-200 select-all">
-                                {`create table backups (
-  id bigint primary key generated always as identity,
-  created_at timestamptz default now(),
-  app_data jsonb not null
-);
-alter table backups enable row level security;
-create policy "Public Insert" on backups for insert with check (true);`}
-                            </pre>
-                            <li>Vá em <strong>Project Settings &gt; API</strong>.</li>
-                            <li>No campo <strong>Endpoint URL</strong> abaixo, cole a URL do projeto e adicione <code className="bg-blue-100 text-blue-800 px-1 rounded">/rest/v1/backups</code> no final.</li>
-                            <li>No campo <strong>API Key</strong> abaixo, cole a chave <code>anon public</code>.</li>
-                        </ol>
-                    </div>
-                );
-            case 'GOOGLE_DRIVE':
-                return (
-                    <div className="text-xs text-slate-600 dark:text-slate-400 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                        <p>Para Google Drive, você precisará implantar um Google Apps Script como Web App.</p>
-                        <p className="mt-2">1. Crie um script que receba POST requests.</p>
-                        <p>2. Salve o conteúdo no Drive.</p>
-                        <p>3. Cole a URL do Web App abaixo.</p>
+                        <p>Configure a tabela 'backups' no seu projeto Supabase conforme a documentação técnica.</p>
                     </div>
                 );
             default:
@@ -125,14 +136,62 @@ create policy "Public Insert" on backups for insert with check (true);`}
     };
 
     return (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6 animate-fade-in relative">
+            
+            {/* MODAL DE DUPLA CONFIRMAÇÃO */}
+            {confirmModal.isOpen && confirmModal.user && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-700 animate-slide-up">
+                        <div className="p-6 text-center">
+                            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
+                                confirmModal.action === 'DELETE' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'
+                            }`}>
+                                <AlertTriangle size={32} />
+                            </div>
+                            
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
+                                {confirmModal.action === 'DELETE' && 'Excluir Usuário?'}
+                                {confirmModal.action === 'BLOCK' && 'Bloquear Acesso?'}
+                                {confirmModal.action === 'UNBLOCK' && 'Desbloquear Acesso?'}
+                            </h3>
+                            
+                            <p className="text-slate-600 dark:text-slate-400 mb-6">
+                                Você está prestes a realizar uma ação em <strong>{confirmModal.user.name}</strong>.
+                                <br/>
+                                {confirmModal.action === 'DELETE' && 'Isso removerá permanentemente o usuário e seus dados.'}
+                                {confirmModal.action === 'BLOCK' && 'O usuário não conseguirá mais fazer login.'}
+                            </p>
+                            
+                            <div className="flex gap-3 justify-center">
+                                <button 
+                                    onClick={() => setConfirmModal({ isOpen: false, action: null, user: null })}
+                                    className="px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    onClick={handleConfirmAction}
+                                    className={`px-5 py-2.5 rounded-lg text-white font-bold shadow-sm flex items-center gap-2 transition-colors ${
+                                        confirmModal.action === 'DELETE' ? 'bg-red-600 hover:bg-red-700' : 
+                                        confirmModal.action === 'BLOCK' ? 'bg-amber-600 hover:bg-amber-700' : 
+                                        'bg-emerald-600 hover:bg-emerald-700'
+                                    }`}
+                                >
+                                    Confirmar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                         <Shield className="text-blue-600" />
                         Painel Administrativo
                     </h1>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm">Controle de usuários e backup de dados.</p>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm">Controle de usuários e segurança do sistema.</p>
                 </div>
 
                 <div className="flex gap-2">
@@ -153,16 +212,20 @@ create policy "Public Insert" on backups for insert with check (true);`}
 
             {activeTab === 'USERS' && (
                 <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                    <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                    <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
                         <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
                             <Users size={18} />
-                            Usuários Cadastrados
+                            Usuários Cadastrados ({users.length})
                         </h3>
+                        <button onClick={refreshData} className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+                            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} /> Atualizar Lista
+                        </button>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm">
                             <thead className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
                                 <tr>
+                                    <th className="p-3">Status</th>
                                     <th className="p-3">Nome</th>
                                     <th className="p-3">Email</th>
                                     <th className="p-3">Função</th>
@@ -170,47 +233,87 @@ create policy "Public Insert" on backups for insert with check (true);`}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                {users.map(u => (
-                                    <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                        <td className="p-3 font-medium text-slate-800 dark:text-white">{u.name}</td>
-                                        <td className="p-3 text-slate-600 dark:text-slate-400">{u.email}</td>
-                                        <td className="p-3">
-                                            <div className="flex items-center gap-2">
-                                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
+                                {users.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="p-8 text-center text-slate-500">Nenhum usuário encontrado.</td>
+                                    </tr>
+                                ) : (
+                                    users.map(u => (
+                                        <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                            <td className="p-3">
+                                                {u.status === 'BLOCKED' ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                                        <Lock size={10} /> Bloqueado
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                                        <CheckCircle size={10} /> Ativo
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="p-3 font-medium text-slate-800 dark:text-white flex items-center gap-2">
+                                                {u.name}
+                                                {u.id === currentAdmin.id && <span className="text-[10px] text-slate-400">(Você)</span>}
+                                            </td>
+                                            <td className="p-3 text-slate-600 dark:text-slate-400">{u.email}</td>
+                                            <td className="p-3">
+                                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'}`}>
                                                     {u.role}
                                                 </span>
+                                            </td>
+                                            <td className="p-3 text-right">
                                                 {u.id !== currentAdmin.id && (
-                                                    <button
-                                                        onClick={() => handleToggleRole(u)}
-                                                        className="text-slate-400 hover:text-blue-600 transition-colors"
-                                                        title="Alternar Permissões"
-                                                    >
-                                                        <RefreshCw size={14} />
-                                                    </button>
+                                                    <div className="flex justify-end gap-2">
+                                                        <button
+                                                            onClick={() => onImpersonate(u)}
+                                                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md"
+                                                            title="Acessar como este usuário"
+                                                        >
+                                                            <Users size={16} />
+                                                        </button>
+                                                        
+                                                        {/* Botão Bloquear/Desbloquear */}
+                                                        {u.status === 'BLOCKED' ? (
+                                                            <button
+                                                                onClick={() => openConfirmModal(u, 'UNBLOCK')}
+                                                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-md"
+                                                                title="Desbloquear"
+                                                            >
+                                                                <Unlock size={16} />
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => openConfirmModal(u, 'BLOCK')}
+                                                                className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-md"
+                                                                title="Bloquear/Suspender"
+                                                            >
+                                                                <Lock size={16} />
+                                                            </button>
+                                                        )}
+
+                                                        {/* Botão Excluir */}
+                                                        <button
+                                                            onClick={() => openConfirmModal(u, 'DELETE')}
+                                                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-md"
+                                                            title="Excluir Conta"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
                                                 )}
-                                            </div>
-                                        </td>
-                                        <td className="p-3 text-right">
-                                            {u.id !== currentAdmin.id && (
-                                                <button
-                                                    onClick={() => onImpersonate(u)}
-                                                    className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200 transition-colors font-bold"
-                                                >
-                                                    Acessar
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
                             </tbody>
                         </table>
                     </div>
                 </div>
             )}
 
+            {/* TAB DATABASE (Mantida igual a anterior, apenas renderizada aqui) */}
             {activeTab === 'DATABASE' && (
                 <div className="space-y-6">
-                    {/* Backup Controls */}
                     <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row justify-between items-center gap-4">
                         <div>
                             <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -231,7 +334,6 @@ create policy "Public Insert" on backups for insert with check (true);`}
                         </button>
                     </div>
 
-                    {/* Connection List */}
                     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
                         <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
                             <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -299,9 +401,6 @@ create policy "Public Insert" on backups for insert with check (true);`}
                                                 )}
                                                 {conn.lastBackupStatus === 'ERROR' && (
                                                     <span className="text-xs text-red-600 flex items-center gap-1 font-bold"><XCircle size={10} /> Falha</span>
-                                                )}
-                                                {conn.lastBackupTime && (
-                                                    <span className="text-[10px] text-slate-400">Último: {new Date(conn.lastBackupTime).toLocaleString()}</span>
                                                 )}
                                             </div>
                                         </div>
