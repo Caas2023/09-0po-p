@@ -9,13 +9,14 @@ export interface DatabaseAdapter {
     // Clients
     getClients(ownerId: string): Promise<Client[]>;
     saveClient(client: Client): Promise<void>;
-    deleteClient(id: string): Promise<void>; // <--- OBRIGATÓRIO
+    deleteClient(id: string): Promise<void>;
 
     // Services
     getServices(ownerId: string): Promise<ServiceRecord[]>;
     saveService(service: ServiceRecord): Promise<void>;
     updateService(service: ServiceRecord): Promise<void>;
+    deleteService(id: string): Promise<void>; // <--- ADICIONADO
 
-    // Connections (for backups - optional in cloud)
+    // Connections
     initialize(): Promise<void>;
 }
