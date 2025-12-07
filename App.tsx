@@ -118,6 +118,7 @@ function App() {
     return <ClientDetails currentUser={currentUser!} client={client} onBack={() => navigate('/clients')} />;
   };
 
+  // --- AQUI ESTÁ A CORREÇÃO ---
   // New Order Wrapper to handle Navigation
   const NewOrderWrapper = () => {
     const navigate = useNavigate();
@@ -126,6 +127,9 @@ function App() {
         clients={clients}
         onSave={() => { refreshData(); navigate('/clients'); }}
         onCancel={() => navigate('/')}
+        // Passamos o ID do usuário atual aqui.
+        // O '!' diz ao TypeScript que temos certeza que currentUser existe (pois já passamos pelo check de login)
+        currentUserId={currentUser!.id} 
       />
     );
   };
