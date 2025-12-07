@@ -1,4 +1,3 @@
-
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { DatabaseAdapter } from './types';
 import { Client, ServiceRecord, User } from '../../types';
@@ -36,15 +35,14 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
     // --- Clients ---
     async getClients(ownerId: string): Promise<Client[]> {
-        const { data, error } = await this.supabase.from('clients').select('*').eq('owner_id', ownerId); // Note: Assuming SQL map is snake_case
+        const { data, error } = await this.supabase.from('clients').select('*').eq('owner_id', ownerId);
         if (error) return [];
 
-        // Map back to camelCase if needed, or assume data matches type (ideal)
-        // For simplicity in this demo, strict mapping might be needed in prod
         return data.map((d: any) => ({
             ...d,
             ownerId: d.owner_id,
-            createdAt: d.created_at
+            createdAt: d.created_at,
+            contactPerson: d.contact_person // Mapeando snake_case para camelCase
         })) as Client[];
     }
 
@@ -65,10 +63,20 @@ export class SupabaseAdapter implements DatabaseAdapter {
         if (error) console.error('Supabase insert error (client):', error);
     }
 
+    // --- ADICIONADO: DELETE NO SUPABASE ---
+    async deleteClient(id: string): Promise<void> {
+        // Primeiro deletamos serviços associados para manter integridade (opcional, dependendo da sua regra de banco)
+        // await this.supabase.from('services').delete().eq('client_id', id);
+        
+        const { error } = await this.supabase.from('clients').delete().eq('id', id);
+        if (error) {
+            console.error('Supabase delete error:', error);
+            throw new Error('Falha ao excluir cliente no Supabase');
+        }
+    }
+
     // --- Services ---
     async getServices(ownerId: string): Promise<ServiceRecord[]> {
-        // This might require a join in SQL or filtering by owner_id on service if denormalized
-        // Optimized: Service should have owner_id
         const { data, error } = await this.supabase.from('services').select('*').eq('owner_id', ownerId);
         if (error) return [];
         return data.map((d: any) => ({
