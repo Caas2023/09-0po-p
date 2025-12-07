@@ -38,11 +38,12 @@ export class SupabaseAdapter implements DatabaseAdapter {
         const { data, error } = await this.supabase.from('clients').select('*').eq('owner_id', ownerId);
         if (error) return [];
 
+        // Mapeando de snake_case (banco) para camelCase (app) se necessário
         return data.map((d: any) => ({
             ...d,
             ownerId: d.owner_id,
             createdAt: d.created_at,
-            contactPerson: d.contact_person // Mapeando snake_case para camelCase
+            contactPerson: d.contact_person
         })) as Client[];
     }
 
@@ -63,11 +64,8 @@ export class SupabaseAdapter implements DatabaseAdapter {
         if (error) console.error('Supabase insert error (client):', error);
     }
 
-    // --- ADICIONADO: DELETE NO SUPABASE ---
     async deleteClient(id: string): Promise<void> {
-        // Primeiro deletamos serviços associados para manter integridade (opcional, dependendo da sua regra de banco)
-        // await this.supabase.from('services').delete().eq('client_id', id);
-        
+        // Primeiro deleta dependências se houver restrições de chave estrangeira, ou deleta direto
         const { error } = await this.supabase.from('clients').delete().eq('id', id);
         if (error) {
             console.error('Supabase delete error:', error);
@@ -79,6 +77,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
     async getServices(ownerId: string): Promise<ServiceRecord[]> {
         const { data, error } = await this.supabase.from('services').select('*').eq('owner_id', ownerId);
         if (error) return [];
+        
         return data.map((d: any) => ({
             ...d,
             ownerId: d.owner_id,
@@ -124,5 +123,13 @@ export class SupabaseAdapter implements DatabaseAdapter {
         };
         const { error } = await this.supabase.from('services').update(payload).eq('id', service.id);
         if (error) console.error('Supabase update error (service):', error);
+    }
+
+    async deleteService(id: string): Promise<void> {
+        const { error } = await this.supabase.from('services').delete().eq('id', id);
+        if (error) {
+            console.error('Supabase delete error (service):', error);
+            throw new Error('Falha ao excluir serviço no Supabase');
+        }
     }
 }
