@@ -180,16 +180,19 @@ export const saveClient = async (client: Client) => {
   saveList(STORAGE_KEYS.CLIENTS, list);
 };
 
+// --- NOVA FUNÇÃO DE EXCLUSÃO ---
 export const deleteClient = async (id: string) => {
-  // Chamada ao adaptador para exclusão
-  if (dbAdapter instanceof LocalStorageAdapter) {
+  // Verifica se o adaptador possui o método deleteClient (caso a interface não tenha sido atualizada globalmente)
+  if ('deleteClient' in dbAdapter) {
+      await (dbAdapter as any).deleteClient(id);
+  } else if (dbAdapter instanceof LocalStorageAdapter) {
+      // Fallback explícito para LocalStorageAdapter
       await (dbAdapter as LocalStorageAdapter).deleteClient(id);
   } else {
-      // Implementação futura para outros adaptadores (Supabase, Firebase) se necessário
-      console.warn("Delete implementado apenas para LocalStorage neste momento");
+      console.warn("Delete não suportado completamente pelo adaptador atual sem atualização da interface.");
   }
 
-  // Atualiza o espelho local para a UI reagir instantaneamente
+  // Atualiza o espelho local (LocalStorage) para garantir que a UI reaja imediatamente
   const list = getList<Client>(STORAGE_KEYS.CLIENTS);
   const newList = list.filter(c => c.id !== id);
   saveList(STORAGE_KEYS.CLIENTS, newList);
@@ -264,7 +267,8 @@ export const getServicesByClient = async (clientId: string): Promise<ServiceReco
 export const getExpenses = async (): Promise<ExpenseRecord[]> => {
   const user = getCurrentUser();
   if (!user) return [];
-  // Retaining local read for safety until types are updated in adapter interface.
+  // Only LocalStorageAdapter implements getExpenses effectively for now in this codebase context
+  // Ideally we add it to DatabaseAdapter interface.
   return getList<ExpenseRecord>(STORAGE_KEYS.EXPENSES);
 };
 
