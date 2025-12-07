@@ -5,6 +5,7 @@ export interface DatabaseAdapter {
     getUsers(): Promise<User[]>;
     saveUser(user: User): Promise<void>;
     updateUser(user: User): Promise<void>;
+    deleteUser(id: string): Promise<void>; // <--- ADICIONADO
 
     // Clients
     getClients(ownerId: string): Promise<Client[]>;
@@ -15,7 +16,7 @@ export interface DatabaseAdapter {
     getServices(ownerId: string): Promise<ServiceRecord[]>;
     saveService(service: ServiceRecord): Promise<void>;
     updateService(service: ServiceRecord): Promise<void>;
-    deleteService(id: string): Promise<void>; // <--- ADICIONADO
+    deleteService(id: string): Promise<void>;
 
     // Connections
     initialize(): Promise<void>;
