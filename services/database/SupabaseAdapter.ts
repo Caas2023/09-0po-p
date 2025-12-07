@@ -33,12 +33,20 @@ export class SupabaseAdapter implements DatabaseAdapter {
         if (error) console.error('Supabase update error (user):', error);
     }
 
+    // --- ADICIONADO: DELETE USER ---
+    async deleteUser(id: string): Promise<void> {
+        const { error } = await this.supabase.from('users').delete().eq('id', id);
+        if (error) {
+            console.error('Supabase delete user error:', error);
+            throw new Error('Falha ao excluir usuário');
+        }
+    }
+
     // --- Clients ---
     async getClients(ownerId: string): Promise<Client[]> {
         const { data, error } = await this.supabase.from('clients').select('*').eq('owner_id', ownerId);
         if (error) return [];
 
-        // Mapeando de snake_case (banco) para camelCase (app) se necessário
         return data.map((d: any) => ({
             ...d,
             ownerId: d.owner_id,
@@ -65,7 +73,6 @@ export class SupabaseAdapter implements DatabaseAdapter {
     }
 
     async deleteClient(id: string): Promise<void> {
-        // Primeiro deleta dependências se houver restrições de chave estrangeira, ou deleta direto
         const { error } = await this.supabase.from('clients').delete().eq('id', id);
         if (error) {
             console.error('Supabase delete error:', error);
@@ -77,7 +84,6 @@ export class SupabaseAdapter implements DatabaseAdapter {
     async getServices(ownerId: string): Promise<ServiceRecord[]> {
         const { data, error } = await this.supabase.from('services').select('*').eq('owner_id', ownerId);
         if (error) return [];
-        
         return data.map((d: any) => ({
             ...d,
             ownerId: d.owner_id,
