@@ -9,7 +9,7 @@ export interface DatabaseAdapter {
     // Clients
     getClients(ownerId: string): Promise<Client[]>;
     saveClient(client: Client): Promise<void>;
-    deleteClient(id: string): Promise<void>; // <--- ADICIONE ESTA LINHA
+    deleteClient(id: string): Promise<void>; // <--- OBRIGATÓRIO
 
     // Services
     getServices(ownerId: string): Promise<ServiceRecord[]>;
