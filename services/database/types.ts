@@ -1,4 +1,3 @@
-
 import { Client, ServiceRecord, ExpenseRecord, User } from '../../types';
 
 export interface DatabaseAdapter {
@@ -10,6 +9,7 @@ export interface DatabaseAdapter {
     // Clients
     getClients(ownerId: string): Promise<Client[]>;
     saveClient(client: Client): Promise<void>;
+    deleteClient(id: string): Promise<void>; // <--- ADICIONE ESTA LINHA
 
     // Services
     getServices(ownerId: string): Promise<ServiceRecord[]>;
