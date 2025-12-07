@@ -42,11 +42,16 @@ export class LocalStorageAdapter implements DatabaseAdapter {
         }
     }
 
+    // --- ADICIONADO: DELETE USER ---
+    async deleteUser(id: string): Promise<void> {
+        const list = await this.getUsers();
+        const newList = list.filter(u => u.id !== id);
+        this.saveList(STORAGE_KEYS.USERS, newList);
+    }
+
     // --- Clients ---
     async getClients(ownerId: string): Promise<Client[]> {
         const all = this.getList<Client>(STORAGE_KEYS.CLIENTS);
-        // Assuming Admin check is done in service layer, but Adapter should filter by query
-        // Here we simulate the DB filtering
         return all.filter(c => c.ownerId === ownerId);
     }
 
@@ -65,9 +70,6 @@ export class LocalStorageAdapter implements DatabaseAdapter {
     // --- Services ---
     async getServices(ownerId: string): Promise<ServiceRecord[]> {
         const all = this.getList<ServiceRecord>(STORAGE_KEYS.SERVICES);
-        // In a real DB, we would join or filter by Owner. 
-        // Here, we filter services whose client belongs to owner? 
-        // Or just assume service has ownerId (which we added to type earlier).
         return all.filter(s => s.ownerId === ownerId);
     }
 
