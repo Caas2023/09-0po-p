@@ -92,7 +92,8 @@ export class SupabaseAdapter implements DatabaseAdapter {
             driverFee: d.driver_fee,
             requesterName: d.requester_name,
             paymentMethod: d.payment_method,
-            paid: d.paid // Certifique-se de que o paid está vindo do banco
+            paid: d.paid,
+            status: d.status // IMPORTANTE: Recuperar o status do banco
         })) as ServiceRecord[];
     }
 
@@ -102,7 +103,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
             owner_id: service.ownerId,
             client_id: service.clientId,
             cost: service.cost,
-            // status: service.status, // REMOVIDO
+            status: service.status, // RESTAURADO: Envia o status (mesmo que seja sempre 'PENDING' na criação)
             date: service.date,
             pickup_addresses: service.pickupAddresses,
             delivery_addresses: service.deliveryAddresses,
@@ -118,7 +119,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
     async updateService(service: ServiceRecord): Promise<void> {
         const payload = {
             cost: service.cost,
-            // status: service.status, // REMOVIDO
+            status: service.status, // RESTAURADO
             date: service.date,
             pickup_addresses: service.pickupAddresses,
             delivery_addresses: service.deliveryAddresses,
