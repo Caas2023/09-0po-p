@@ -1,4 +1,3 @@
-
 export type UserRole = 'ADMIN' | 'USER';
 export type UserStatus = 'ACTIVE' | 'BLOCKED';
 
@@ -30,7 +29,7 @@ export interface Client {
 }
 
 export type PaymentMethod = 'PIX' | 'CASH' | 'CARD';
-export type ServiceStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+// REMOVIDO: export type ServiceStatus ...
 
 export interface ServiceRecord {
   id: string;
@@ -46,7 +45,7 @@ export interface ServiceRecord {
   imageUrl?: string;
   paid: boolean; 
   paymentMethod?: PaymentMethod;
-  status: ServiceStatus;
+  // REMOVIDO: status: ServiceStatus;
 }
 
 export type ExpenseCategory = 'GAS' | 'LUNCH' | 'OTHER';
