@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Client, ServiceRecord, ServiceStatus, PaymentMethod, User } from '../types';
+import { Client, ServiceRecord, PaymentMethod, User } from '../types';
 import { saveService, updateService, deleteService } from '../services/storageService';
-import { HandCoins, Users, Bike, AlertCircle, CheckCircle, Clock, XCircle, Calendar, ArrowUpRight, ArrowDownRight, Filter, Plus, X, MapPin, User as UserIcon, DollarSign, CreditCard, Banknote, QrCode, Package, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import { HandCoins, Users, Bike, AlertCircle, CheckCircle, Calendar, ArrowUpRight, ArrowDownRight, Filter, Plus, X, MapPin, User as UserIcon, DollarSign, CreditCard, Banknote, QrCode, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface DashboardProps {
@@ -25,19 +25,18 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
     const [requester, setRequester] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
     const [isPaid, setIsPaid] = useState(false);
-    // REMOVIDO: State do status
-    // const [newServiceStatus, setNewServiceStatus] = useState<ServiceStatus>('PENDING');
 
-    // Estado para menu de ações rápidas na tabela
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
     const stats = useMemo(() => {
         const totalServices = services.length;
         const totalClients = clients.length;
-        const activeServices = services.filter(s => s.status === 'IN_PROGRESS' || s.status === 'PENDING').length;
-        const pendingPayment = services.filter(s => !s.paid && s.status !== 'CANCELLED').reduce((acc, curr) => acc + curr.cost, 0);
+        // ATUALIZADO: Removemos a contagem de "Ativos" baseada em status
+        // Vamos contar apenas os que não foram pagos como uma métrica de atividade pendente
+        const activeServices = services.filter(s => !s.paid).length; 
+        const pendingPayment = services.filter(s => !s.paid).reduce((acc, curr) => acc + curr.cost, 0);
 
-        // Calculate percentage change (mock data for now, ideally compare with last month)
+        // Calculate percentage change (mock data for now)
         const revenueChange = +12.5;
         const clientsChange = +5.2;
         const activeChange = -2.1;
@@ -68,33 +67,6 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
 
     const getClientName = (clientId: string) => {
         return clients.find(c => c.id === clientId)?.name || 'Cliente Desconhecido';
-    };
-
-    const getStatusIcon = (status: ServiceStatus) => {
-        switch (status) {
-            case 'PENDING': return <Clock size={16} className="text-amber-500" />;
-            case 'IN_PROGRESS': return <Bike size={16} className="text-blue-500" />;
-            case 'DONE': return <CheckCircle size={16} className="text-emerald-500" />;
-            case 'CANCELLED': return <XCircle size={16} className="text-red-500" />;
-        }
-    };
-
-    const getStatusLabel = (status: ServiceStatus) => {
-        switch (status) {
-            case 'PENDING': return 'Pendente';
-            case 'IN_PROGRESS': return 'Em Rota';
-            case 'DONE': return 'Concluído';
-            case 'CANCELLED': return 'Cancelado';
-        }
-    };
-
-    const getStatusColor = (status: ServiceStatus) => {
-        switch (status) {
-            case 'PENDING': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-            case 'IN_PROGRESS': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
-            case 'DONE': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400';
-            case 'CANCELLED': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
-        }
     };
 
     const handleAddAddress = (type: 'pickup' | 'delivery') => {
@@ -132,8 +104,6 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
         setRequester('');
         setPaymentMethod('PIX');
         setIsPaid(false);
-        // REMOVIDO reset do status
-        // setNewServiceStatus('PENDING');
         setShowNewServiceModal(false);
     };
 
@@ -164,7 +134,7 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
             requesterName: requester,
             paymentMethod: paymentMethod,
             paid: isPaid,
-            status: 'PENDING' // FIXADO COMO PENDENTE
+            // status: 'PENDING' // REMOVIDO COMPLETAMENTE
         };
 
         await saveService(newService);
@@ -247,7 +217,7 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
                         </span>
                     </div>
                     <h3 className="text-3xl font-bold text-slate-800 dark:text-white mb-1">{stats.activeServices}</h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Em Andamento / Pendentes</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Corridas Pendentes</p>
                 </div>
 
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 group hover:border-red-500 transition-all">
@@ -305,7 +275,6 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
                                 <th className="p-4 font-bold">Rota Resumida</th>
                                 <th className="p-4 font-bold text-right">Valor</th>
                                 <th className="p-4 font-bold text-center">Status Pag.</th>
-                                {/* Removido coluna de Status do Serviço aqui também para consistência */}
                                 <th className="p-4 font-bold text-center w-16"></th>
                             </tr>
                         </thead>
@@ -318,7 +287,7 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
                                 filteredServices.map(service => {
                                     const pickup = service.pickupAddresses[0] || 'N/A';
                                     const delivery = service.deliveryAddresses[service.deliveryAddresses.length - 1] || 'N/A';
-                                    const routeSummary = `${pickup.split(',')[0]} \u2192 ${delivery.split(',')[0]}`; // Uses first part of address
+                                    const routeSummary = `${pickup.split(',')[0]} \u2192 ${delivery.split(',')[0]}`;
                                     const isOpen = openMenuId === service.id;
 
                                     return (
@@ -338,7 +307,6 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
                                                     {service.paid ? 'PAGO' : 'PENDENTE'}
                                                 </span>
                                             </td>
-                                            {/* Coluna Status do Serviço removida */}
                                             <td className="p-4 text-center relative">
                                                 <button 
                                                     onClick={(e) => { e.stopPropagation(); setOpenMenuId(isOpen ? null : service.id); }}
@@ -356,7 +324,7 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
                                                             Marcar como {service.paid ? 'Pendente' : 'Pago'}
                                                         </button>
                                                         <button 
-                                                            onClick={() => { /* Implement Edit Logic here or navigate */ toast.info("Funcionalidade de edição rápida em breve."); setOpenMenuId(null); }}
+                                                            onClick={() => { toast.info("Edite através da tela de clientes."); setOpenMenuId(null); }}
                                                             className="w-full text-left px-4 py-2.5 text-sm font-medium flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-blue-600 dark:text-blue-400 transition-colors"
                                                         >
                                                             <Pencil size={16} />
@@ -477,7 +445,7 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
                                 </div>
                             </div>
 
-                            {/* Payment & Status Info - CAMPO DE STATUS REMOVIDO AQUI */}
+                            {/* Payment & Status Info - CAMPO DE STATUS REMOVIDO */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-700 animate-fade-in">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Forma de Pagamento</label>
@@ -488,7 +456,7 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
                                                 type="button"
                                                 onClick={() => setPaymentMethod(method)}
                                                 className={`flex-1 flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${paymentMethod === method
-                                                    ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-500 text-blue-700 dark:text-blue-400 font-bold shadow-sm'
+                                                    ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-500 text-blue-700 dark:text-blue-400 font-bold shadow-sm'
                                                     : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
                                                     }`}
                                             >
@@ -501,7 +469,6 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
                                     </div>
                                 </div>
 
-                                {/* Payment Status Toggle */}
                                 <div className="flex items-center justify-center">
                                      <label className={`w-full flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isPaid ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400 shadow-sm' : 'bg-amber-50 dark:bg-amber-900/30 border-amber-500 text-amber-700 dark:text-amber-400 shadow-sm'}`}>
                                         <div className="flex items-center gap-3">
