@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Client, ServiceRecord, PaymentMethod, User, ServiceStatus } from '../types';
 import { FileSpreadsheet, Building2, FolderOpen, ChevronRight, FileText, CalendarRange, PieChart, CreditCard, Banknote, QrCode, AlertCircle, Table, ShieldCheck, FileDown, Loader2 } from 'lucide-react';
@@ -161,16 +160,6 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
       }
   };
 
-  const getStatusLabel = (status: ServiceStatus) => {
-      switch(status) {
-          case 'PENDING': return 'Pendente';
-          case 'IN_PROGRESS': return 'Em Rota';
-          case 'DONE': return 'Concluído';
-          case 'CANCELLED': return 'Cancelado';
-          default: return status || 'Desconhecido';
-      }
-  };
-
   // --- EXPORT FUNCTIONS ---
 
   const handleExportPDF = () => {
@@ -255,14 +244,13 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
                 getClientName(s.clientId),
                 s.requesterName || '-',
                 `R: ${s.pickupAddresses.join('\n')}\nE: ${s.deliveryAddresses.join('\n')}`,
-                getStatusLabel(s.status),
                 `R$ ${s.cost.toFixed(2)}`,
                 s.paid ? 'PAGO' : 'PENDENTE'
             ]);
 
             autoTable(doc, {
                 startY: 80,
-                head: [['Data', 'Cliente', 'Solicitante', 'Rota', 'Status', 'Valor', 'Pagamento']],
+                head: [['Data', 'Cliente', 'Solicitante', 'Rota', 'Valor', 'Pagamento']],
                 body: tableData,
                 theme: 'striped',
                 headStyles: {
@@ -282,13 +270,12 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
                     1: { cellWidth: 35 }, // Client
                     2: { cellWidth: 25 }, // Requester
                     3: { cellWidth: 'auto' }, // Route (expands)
-                    4: { cellWidth: 25, halign: 'center' }, // Service Status
-                    5: { cellWidth: 25, halign: 'right' }, // Value
-                    6: { cellWidth: 20, halign: 'center' }  // Payment Status
+                    4: { cellWidth: 25, halign: 'right' }, // Value
+                    5: { cellWidth: 20, halign: 'center' }  // Payment Status
                 },
                 didParseCell: function(data: any) {
                     // Color code status
-                    if (data.section === 'body' && data.column.index === 6) {
+                    if (data.section === 'body' && data.column.index === 5) {
                         if (data.cell.raw === 'PAGO') {
                             data.cell.styles.textColor = [22, 163, 74]; // Green
                             data.cell.styles.fontStyle = 'bold';
@@ -331,7 +318,7 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
     const pickupHeaders = Array.from({ length: maxPickups }, (_, i) => `Coleta ${i + 1}`);
     const deliveryHeaders = Array.from({ length: maxDeliveries }, (_, i) => `Entrega ${i + 1}`);
 
-    const headers = ['Data', 'Cliente', 'Solicitante', ...pickupHeaders, ...deliveryHeaders, 'Status Serviço', 'Valor (R$)', 'Custo Motoboy (R$)', 'Lucro (R$)', 'Pagamento', 'Status Pagamento'];
+    const headers = ['Data', 'Cliente', 'Solicitante', ...pickupHeaders, ...deliveryHeaders, 'Valor (R$)', 'Custo Motoboy (R$)', 'Lucro (R$)', 'Pagamento', 'Status Pagamento'];
     
     const rows = filteredData.map(s => {
         const profit = s.cost - (s.driverFee || 0);
@@ -349,7 +336,6 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
             safeString(s.requesterName),
             ...pickupCols,
             ...deliveryCols,
-            getStatusLabel(s.status),
             s.cost.toFixed(2).replace('.', ','), // Google Sheets prefers comma for decimals in BR locale usually
             (s.driverFee || 0).toFixed(2).replace('.', ','),
             profit.toFixed(2).replace('.', ','),
@@ -434,7 +420,6 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
               <th>Solicitante</th>
               ${pickupHeaders}
               ${deliveryHeaders}
-              <th>Status Serviço</th>
               <th class="money">Valor</th>
               <th>Pagamento</th>
               <th>Status Pagamento</th>
@@ -456,7 +441,6 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
                   <td>${s.requesterName}</td>
                   ${pickupCells}
                   ${deliveryCells}
-                  <td>${getStatusLabel(s.status)}</td>
                   <td class="money">R$ ${s.cost.toFixed(2)}</td>
                   <td>${method}</td>
                   <td>${s.paid ? 'Pago' : 'Pendente'}</td>
@@ -711,7 +695,6 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
                                     <th className="p-3 font-bold">Cliente</th>
                                     <th className="p-3 font-bold">Solicitante</th>
                                     <th className="p-3 font-bold">Valor (R$)</th>
-                                    <th className="p-3 font-bold text-center">Status Serviço</th>
                                     <th className="p-3 font-bold text-center">Pagamento</th>
                                     <th className="p-3 font-bold text-center">Status Pagamento</th>
                                     <th className="p-3 font-bold text-center">Doc</th>
@@ -720,7 +703,7 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                                 {filteredData.length === 0 ? (
                                     <tr>
-                                        <td colSpan={8} className="p-8 text-center text-slate-400">Nenhum registro encontrado com os filtros atuais.</td>
+                                        <td colSpan={7} className="p-8 text-center text-slate-400">Nenhum registro encontrado com os filtros atuais.</td>
                                     </tr>
                                 ) : (
                                     filteredData.map(s => (
@@ -740,16 +723,6 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
                                             </td>
                                             <td className="p-3 font-bold text-slate-800 dark:text-white">
                                                 {s.cost.toFixed(2)}
-                                            </td>
-                                            <td className="p-3 text-center">
-                                                 <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${
-                                                     s.status === 'PENDING' ? 'bg-slate-100 text-slate-600 border-slate-200' :
-                                                     s.status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                                     s.status === 'DONE' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                                                     'bg-red-50 text-red-600 border-red-200'
-                                                 }`}>
-                                                     {getStatusLabel(s.status)}
-                                                 </span>
                                             </td>
                                             <td className="p-3 text-center">
                                                 <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300">
