@@ -1,452 +1,539 @@
-
-import React, { useMemo, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
-import { Client, ServiceRecord, ExpenseRecord } from '../types';
-import { TrendingUp, DollarSign, Bike, Wallet, Banknote, QrCode, CreditCard, CalendarDays, Calendar, Filter, Utensils, Fuel, Clock, Users, Trophy, Package } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Client, ServiceRecord, ServiceStatus, PaymentMethod, User } from '../types';
+import { saveService, updateService, deleteService } from '../services/storageService';
+import { HandCoins, Users, Bike, AlertCircle, CheckCircle, Clock, XCircle, Calendar, ArrowUpRight, ArrowDownRight, Filter, Plus, X, MapPin, User as UserIcon, DollarSign, CreditCard, Banknote, QrCode, Package, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface DashboardProps {
-  clients: Client[];
-  services: ServiceRecord[];
-  expenses: ExpenseRecord[];
+    clients: Client[];
+    services: ServiceRecord[];
+    currentUser: User;
+    onRefresh: () => void;
 }
 
-type TimeFrame = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+export function Dashboard({ clients, services, currentUser, onRefresh }: DashboardProps) {
+    const [filter, setFilter] = useState<'TODOS' | 'PENDENTE' | 'PAGO'>('TODOS');
+    const [showNewServiceModal, setShowNewServiceModal] = useState(false);
 
-const getLocalDateStr = (d: Date) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-};
+    // New Service Form State
+    const [selectedClientId, setSelectedClientId] = useState('');
+    const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
+    const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
+    const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
+    const [cost, setCost] = useState('');
+    const [driverFee, setDriverFee] = useState('');
+    const [requester, setRequester] = useState('');
+    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
+    const [isPaid, setIsPaid] = useState(false);
+    // REMOVIDO: State do status
+    // const [newServiceStatus, setNewServiceStatus] = useState<ServiceStatus>('PENDING');
 
-export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expenses }) => {
-  const [timeFrame, setTimeFrame] = useState<TimeFrame>('MONTHLY');
+    // Estado para menu de ações rápidas na tabela
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
-  // 1. Filter Data based on TimeFrame relative to TODAY
-  const { filteredServices, filteredExpenses, dateLabel } = useMemo(() => {
-    const now = new Date();
-    // Normalize to start of day for easier calculation logic, though we use strings for comparison
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-    const currentDate = now.getDate();
-    const currentDayOfWeek = now.getDay(); // 0 = Sunday
+    const stats = useMemo(() => {
+        const totalServices = services.length;
+        const totalClients = clients.length;
+        const activeServices = services.filter(s => s.status === 'IN_PROGRESS' || s.status === 'PENDING').length;
+        const pendingPayment = services.filter(s => !s.paid && s.status !== 'CANCELLED').reduce((acc, curr) => acc + curr.cost, 0);
 
-    let startStr = '';
-    let endStr = '';
-    let label = '';
+        // Calculate percentage change (mock data for now, ideally compare with last month)
+        const revenueChange = +12.5;
+        const clientsChange = +5.2;
+        const activeChange = -2.1;
+        const pendingChange = +8.4;
 
-    if (timeFrame === 'DAILY') {
-        startStr = getLocalDateStr(now);
-        endStr = startStr;
-        label = 'Hoje';
-    } else if (timeFrame === 'WEEKLY') {
-        // Start of week (Sunday)
-        const start = new Date(now);
-        const day = start.getDay(); 
-        const diff = start.getDate() - day;
-        start.setDate(diff);
-        startStr = getLocalDateStr(start);
-        
-        // End of week (Saturday)
-        const end = new Date(start);
-        end.setDate(start.getDate() + 6);
-        endStr = getLocalDateStr(end);
-        
-        label = 'Esta Semana';
-    } else if (timeFrame === 'MONTHLY') {
-        const start = new Date(currentYear, currentMonth, 1);
-        const end = new Date(currentYear, currentMonth + 1, 0); // Last day of month
-        startStr = getLocalDateStr(start);
-        endStr = getLocalDateStr(end);
-        label = 'Este Mês';
-    } else if (timeFrame === 'YEARLY') {
-        const start = new Date(currentYear, 0, 1);
-        const end = new Date(currentYear, 11, 31);
-        startStr = getLocalDateStr(start);
-        endStr = getLocalDateStr(end);
-        label = 'Este Ano';
-    }
+        return {
+            totalServices,
+            totalClients,
+            activeServices,
+            pendingPayment,
+            revenueChange,
+            clientsChange,
+            activeChange,
+            pendingChange
+        };
+    }, [services, clients]);
 
-    const filterByDate = (itemDate: string) => {
-        const dateStr = itemDate.includes('T') ? itemDate.split('T')[0] : itemDate;
-        return dateStr >= startStr && dateStr <= endStr;
+    const filteredServices = useMemo(() => {
+        let filtered = [...services];
+        if (filter === 'PENDENTE') {
+            filtered = filtered.filter(s => !s.paid);
+        } else if (filter === 'PAGO') {
+            filtered = filtered.filter(s => s.paid);
+        }
+        // Sort by date desc
+        return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10); // Show last 10
+    }, [services, filter]);
+
+    const getClientName = (clientId: string) => {
+        return clients.find(c => c.id === clientId)?.name || 'Cliente Desconhecido';
     };
 
-    return {
-        filteredServices: services.filter(s => filterByDate(s.date)),
-        filteredExpenses: expenses.filter(e => filterByDate(e.date)),
-        dateLabel: label
+    const getStatusIcon = (status: ServiceStatus) => {
+        switch (status) {
+            case 'PENDING': return <Clock size={16} className="text-amber-500" />;
+            case 'IN_PROGRESS': return <Bike size={16} className="text-blue-500" />;
+            case 'DONE': return <CheckCircle size={16} className="text-emerald-500" />;
+            case 'CANCELLED': return <XCircle size={16} className="text-red-500" />;
+        }
     };
-  }, [services, expenses, timeFrame]);
-  
-  // 2. Calculate Stats based on FILTERED data
-  const stats = useMemo(() => {
-    const totalRevenue = filteredServices.reduce((sum, s) => sum + s.cost, 0);
-    const totalDriverPay = filteredServices.reduce((sum, s) => sum + (s.driverFee || 0), 0);
-    
-    // Calculate Pending (Not Paid)
-    const totalPending = filteredServices
-        .filter(s => !s.paid)
-        .reduce((sum, s) => sum + s.cost, 0);
 
-    const expensesByCat = filteredExpenses.reduce((acc, curr) => {
-        acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
-        return acc;
-    }, {} as Record<string, number>);
-
-    // Revenue by Payment Method
-    const revenueByMethod = filteredServices.reduce((acc, curr) => {
-        const method = curr.paymentMethod || 'PIX';
-        acc[method] = (acc[method] || 0) + curr.cost;
-        return acc;
-    }, { PIX: 0, CASH: 0, CARD: 0 } as Record<string, number>);
-
-    const totalOperationalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-    
-    const netProfit = totalRevenue - totalDriverPay - totalOperationalExpenses;
-
-    return { 
-        totalRevenue, 
-        totalPending,
-        totalDriverPay, 
-        totalOperationalExpenses,
-        netProfit, 
-        expensesByCat, 
-        revenueByMethod
+    const getStatusLabel = (status: ServiceStatus) => {
+        switch (status) {
+            case 'PENDING': return 'Pendente';
+            case 'IN_PROGRESS': return 'Em Rota';
+            case 'DONE': return 'Concluído';
+            case 'CANCELLED': return 'Cancelado';
+        }
     };
-  }, [filteredServices, filteredExpenses]);
 
-  // 3. Prepare Chart Data based on TimeFrame granularity
-  const chartData = useMemo(() => {
-    const dataMap = new Map<string, { name: string, revenue: number, cost: number, profit: number, sortKey: number }>();
+    const getStatusColor = (status: ServiceStatus) => {
+        switch (status) {
+            case 'PENDING': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+            case 'IN_PROGRESS': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+            case 'DONE': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400';
+            case 'CANCELLED': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+        }
+    };
 
-    const addToMap = (dateStr: string, revenue: number, cost: number) => {
-        if (!dateStr) return;
-        const normalizedDateStr = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-        // Parse date using Y,M,D components to avoid timezone shifts
-        const [y, m, d] = normalizedDateStr.split('-').map(Number);
-        const date = new Date(y, m - 1, d);
-        
-        let key = '';
-        let label = '';
-        let order = 0;
+    const handleAddAddress = (type: 'pickup' | 'delivery') => {
+        if (type === 'pickup') setPickupAddresses([...pickupAddresses, '']);
+        else setDeliveryAddresses([...deliveryAddresses, '']);
+    };
 
-        if (timeFrame === 'YEARLY') {
-             // Group by Month if viewing Year
-             key = `${date.getFullYear()}-${date.getMonth()}`;
-             const monthName = date.toLocaleDateString('pt-BR', { month: 'short' });
-             label = monthName.charAt(0).toUpperCase() + monthName.slice(1);
-             order = date.getMonth();
+    const handleRemoveAddress = (type: 'pickup' | 'delivery', index: number) => {
+        if (type === 'pickup') {
+            if (pickupAddresses.length > 1) setPickupAddresses(pickupAddresses.filter((_, i) => i !== index));
         } else {
-             // Group by Day for Month/Week/Day
-             key = normalizedDateStr; // YYYY-MM-DD
-             label = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-             order = date.getTime();
+            if (deliveryAddresses.length > 1) setDeliveryAddresses(deliveryAddresses.filter((_, i) => i !== index));
+        }
+    };
+
+    const handleAddressChange = (type: 'pickup' | 'delivery', index: number, value: string) => {
+        if (type === 'pickup') {
+            const newAddresses = [...pickupAddresses];
+            newAddresses[index] = value;
+            setPickupAddresses(newAddresses);
+        } else {
+            const newAddresses = [...deliveryAddresses];
+            newAddresses[index] = value;
+            setDeliveryAddresses(newAddresses);
+        }
+    };
+
+    const resetForm = () => {
+        setSelectedClientId('');
+        setServiceDate(new Date().toISOString().split('T')[0]);
+        setPickupAddresses(['']);
+        setDeliveryAddresses(['']);
+        setCost('');
+        setDriverFee('');
+        setRequester('');
+        setPaymentMethod('PIX');
+        setIsPaid(false);
+        // REMOVIDO reset do status
+        // setNewServiceStatus('PENDING');
+        setShowNewServiceModal(false);
+    };
+
+    const handleCreateService = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedClientId) {
+            toast.error('Selecione um cliente.');
+            return;
         }
 
-        const entry = dataMap.get(key) || { name: label, revenue: 0, cost: 0, profit: 0, sortKey: order };
-        entry.revenue += revenue;
-        entry.cost += cost;
-        dataMap.set(key, entry);
+        const cleanPickups = pickupAddresses.filter(a => a.trim() !== '');
+        const cleanDeliveries = deliveryAddresses.filter(a => a.trim() !== '');
+
+        if (cleanPickups.length === 0 || cleanDeliveries.length === 0) {
+            toast.error('Insira os endereços de coleta e entrega.');
+            return;
+        }
+
+        const newService: ServiceRecord = {
+            id: crypto.randomUUID(),
+            ownerId: currentUser.id,
+            clientId: selectedClientId,
+            date: serviceDate,
+            pickupAddresses: cleanPickups,
+            deliveryAddresses: cleanDeliveries,
+            cost: parseFloat(cost) || 0,
+            driverFee: parseFloat(driverFee) || 0,
+            requesterName: requester,
+            paymentMethod: paymentMethod,
+            paid: isPaid,
+            status: 'PENDING' // FIXADO COMO PENDENTE
+        };
+
+        await saveService(newService);
+        toast.success('Corrida registrada com sucesso!');
+        resetForm();
+        onRefresh();
     };
 
-    filteredServices.forEach(s => addToMap(s.date, s.cost, s.driverFee || 0));
-    filteredExpenses.forEach(e => addToMap(e.date, 0, e.amount));
+    const handleTogglePayment = async (service: ServiceRecord) => {
+        const updatedService = { ...service, paid: !service.paid };
+        await updateService(updatedService);
+        toast.success(`Pagamento ${updatedService.paid ? 'marcado como PAGO' : 'marcado como PENDENTE'}`);
+        onRefresh();
+        setOpenMenuId(null);
+    };
 
-    let result = Array.from(dataMap.values())
-        .map(e => ({ ...e, profit: e.revenue - e.cost }))
-        .sort((a, b) => a.sortKey - b.sortKey);
+    const handleDeleteService = async (serviceId: string) => {
+        if (window.confirm('Tem certeza que deseja excluir esta corrida?')) {
+            await deleteService(serviceId);
+            toast.success('Corrida excluída com sucesso.');
+            onRefresh();
+            setOpenMenuId(null);
+        }
+    };
 
-    return result;
-  }, [filteredServices, filteredExpenses, timeFrame]);
-
-  // 4. Top Clients Stats
-  const topClients = useMemo(() => {
-    const clientStats = new Map<string, { name: string, count: number, revenue: number }>();
-    
-    filteredServices.forEach(s => {
-        const client = clients.find(c => c.id === s.clientId);
-        const name = client ? client.name : 'Desconhecido';
-        const id = s.clientId;
-        
-        const entry = clientStats.get(id) || { name, count: 0, revenue: 0 };
-        entry.count += 1;
-        entry.revenue += s.cost;
-        clientStats.set(id, entry);
-    });
-
-    const sortedByRevenue = Array.from(clientStats.values())
-        .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 5);
-        
-    const sortedByCount = Array.from(clientStats.values())
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
-    return { byRevenue: sortedByRevenue, byCount: sortedByCount };
-  }, [filteredServices, clients]);
-
-  return (
-    <div className="space-y-6 animate-fade-in">
-      
-      {/* HEADER & GLOBAL FILTER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
-        <div>
-            <h1 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                Visão Geral Financeira
-            </h1>
-            <p className="text-slate-500 dark:text-slate-400 text-sm flex items-center gap-1 mt-1">
-                <Calendar size={14} />
-                Exibindo dados de: <span className="font-bold text-slate-700 dark:text-slate-300">{dateLabel}</span>
-            </p>
-        </div>
-
-        {/* Global Time Controls */}
-        <div className="flex bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm self-start md:self-auto overflow-x-auto max-w-full">
-            <button 
-                onClick={() => setTimeFrame('DAILY')}
-                className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all whitespace-nowrap ${timeFrame === 'DAILY' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-white'}`}
-            >
-                Hoje
-            </button>
-            <button 
-                onClick={() => setTimeFrame('WEEKLY')}
-                className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all whitespace-nowrap ${timeFrame === 'WEEKLY' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-white'}`}
-            >
-                Esta Semana
-            </button>
-            <button 
-                onClick={() => setTimeFrame('MONTHLY')}
-                className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all whitespace-nowrap ${timeFrame === 'MONTHLY' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-white'}`}
-            >
-                Este Mês
-            </button>
-            <button 
-                onClick={() => setTimeFrame('YEARLY')}
-                className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all whitespace-nowrap ${timeFrame === 'YEARLY' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-white'}`}
-            >
-                Este Ano
-            </button>
-        </div>
-      </div>
-      
-      {/* Main Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-        
-        {/* Revenue */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <DollarSign size={48} className="text-blue-600" />
-          </div>
-          <div className="flex flex-col">
-            <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Faturamento ({dateLabel})</p>
-            <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-400">R$ {stats.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
-          </div>
-        </div>
-
-        {/* Pending Receivables */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden border-l-4 border-l-amber-400">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <Clock size={48} className="text-amber-600" />
-          </div>
-          <div className="flex flex-col">
-            <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">A Receber</p>
-            <h3 className="text-2xl font-bold text-amber-600">R$ {stats.totalPending.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
-          </div>
-        </div>
-
-        {/* Driver Costs */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <Bike size={48} className="text-red-600" />
-          </div>
-          <div className="flex flex-col">
-            <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Pago aos Motoboys</p>
-            <h3 className="text-2xl font-bold text-red-600 dark:text-red-400">R$ {stats.totalDriverPay.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
-          </div>
-        </div>
-
-        {/* Op Expenses */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <Wallet size={48} className="text-orange-600" />
-          </div>
-          <div className="flex flex-col">
-            <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Despesas (Gas/Almoço)</p>
-            <h3 className="text-2xl font-bold text-orange-600 dark:text-orange-400">R$ {stats.totalOperationalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
-          </div>
-        </div>
-
-         {/* Net Profit */}
-         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <TrendingUp size={48} className="text-emerald-600" />
-          </div>
-          <div className="flex flex-col">
-            <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Lucro Líquido</p>
-            <h3 className={`text-2xl font-bold ${stats.netProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                R$ {stats.netProfit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-            </h3>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart Section */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
-                <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                    <TrendingUp className="text-slate-500 dark:text-slate-400" size={20} />
-                    Evolução: {dateLabel}
-                </h2>
+    return (
+        <div className="space-y-6 animate-fade-in">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Dashboard</h1>
+                    <p className="text-slate-500 dark:text-slate-400">Visão geral da sua operação logística</p>
+                </div>
+                <button
+                    onClick={() => setShowNewServiceModal(true)}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2 shadow-sm hover:shadow-md"
+                >
+                    <Plus size={20} />
+                    Nova Corrida Rápida
+                </button>
             </div>
 
-            <div className="h-80 w-full">
-            {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" className="dark:opacity-20" />
-                    <XAxis dataKey="name" tick={{fill: '#64748b', fontSize: 11, fontWeight: 600}} axisLine={false} tickLine={false} />
-                    <YAxis tick={{fill: '#64748b', fontSize: 11, fontWeight: 600}} axisLine={false} tickLine={false} tickFormatter={(value) => `R$${value}`} />
-                    <Tooltip 
-                        cursor={{fill: '#f1f5f9'}}
-                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: '#fff', color: '#000' }}
-                        formatter={(value: number) => `R$ ${value.toFixed(2)}`}
-                    />
-                    <Legend wrapperStyle={{ paddingTop: '20px' }}/>
-                    <Bar dataKey="revenue" name="Faturamento" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="cost" name="Custos Totais" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="profit" name="Lucro" fill="#10b981" radius={[4, 4, 0, 0]} />
-                </BarChart>
-                </ResponsiveContainer>
-            ) : (
-                <div className="h-full flex items-center justify-center text-slate-400 font-medium flex-col gap-2">
-                    <CalendarDays size={32} className="opacity-20" />
-                    Sem dados para o período selecionado
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 group hover:border-blue-500 transition-all">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                            <HandCoins size={24} />
+                        </div>
+                        <span className={`flex items-center text-xs font-bold ${stats.revenueChange >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {stats.revenueChange >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                            {Math.abs(stats.revenueChange)}%
+                        </span>
+                    </div>
+                    <h3 className="text-3xl font-bold text-slate-800 dark:text-white mb-1">{stats.totalServices}</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Total de Serviços</p>
+                </div>
+
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 group hover:border-emerald-500 transition-all">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="p-3 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                            <Users size={24} />
+                        </div>
+                        <span className={`flex items-center text-xs font-bold ${stats.clientsChange >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {stats.clientsChange >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                            {Math.abs(stats.clientsChange)}%
+                        </span>
+                    </div>
+                    <h3 className="text-3xl font-bold text-slate-800 dark:text-white mb-1">{stats.totalClients}</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Clientes Ativos</p>
+                </div>
+
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 group hover:border-amber-500 transition-all">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="p-3 bg-amber-50 dark:bg-amber-900/30 rounded-lg text-amber-600 dark:text-amber-400 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                            <Bike size={24} />
+                        </div>
+                        <span className={`flex items-center text-xs font-bold ${stats.activeChange >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {stats.activeChange >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                            {Math.abs(stats.activeChange)}%
+                        </span>
+                    </div>
+                    <h3 className="text-3xl font-bold text-slate-800 dark:text-white mb-1">{stats.activeServices}</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Em Andamento / Pendentes</p>
+                </div>
+
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 group hover:border-red-500 transition-all">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="p-3 bg-red-50 dark:bg-red-900/30 rounded-lg text-red-600 dark:text-red-400 group-hover:bg-red-600 group-hover:text-white transition-colors">
+                            <AlertCircle size={24} />
+                        </div>
+                        <span className={`flex items-center text-xs font-bold ${stats.pendingChange >= 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                            {stats.pendingChange >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                            {Math.abs(stats.pendingChange)}%
+                        </span>
+                    </div>
+                    <h3 className="text-3xl font-bold text-slate-800 dark:text-white mb-1">R$ {stats.pendingPayment.toFixed(2)}</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Pendente de Recebimento</p>
+                </div>
+            </div>
+
+            {/* Recent Activity */}
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden animate-slide-up">
+                <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                            <Calendar size={20} className="text-slate-400" />
+                            Atividade Recente
+                        </h2>
+                    </div>
+                    <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
+                        <button
+                            onClick={() => setFilter('TODOS')}
+                            className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${filter === 'TODOS' ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+                        >
+                            Todos
+                        </button>
+                        <button
+                            onClick={() => setFilter('PENDENTE')}
+                            className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${filter === 'PENDENTE' ? 'bg-white dark:bg-slate-600 text-amber-600 dark:text-amber-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400'}`}
+                        >
+                            Pendentes
+                        </button>
+                        <button
+                            onClick={() => setFilter('PAGO')}
+                            className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${filter === 'PAGO' ? 'bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400'}`}
+                        >
+                            Pagos
+                        </button>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 border-b border-slate-100 dark:border-slate-700">
+                            <tr>
+                                <th className="p-4 font-bold">Data</th>
+                                <th className="p-4 font-bold">Cliente</th>
+                                <th className="p-4 font-bold">Rota Resumida</th>
+                                <th className="p-4 font-bold text-right">Valor</th>
+                                <th className="p-4 font-bold text-center">Status Pag.</th>
+                                {/* Removido coluna de Status do Serviço aqui também para consistência */}
+                                <th className="p-4 font-bold text-center w-16"></th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                            {filteredServices.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="p-8 text-center text-slate-400 font-medium">Nenhuma atividade recente encontrada.</td>
+                                </tr>
+                            ) : (
+                                filteredServices.map(service => {
+                                    const pickup = service.pickupAddresses[0] || 'N/A';
+                                    const delivery = service.deliveryAddresses[service.deliveryAddresses.length - 1] || 'N/A';
+                                    const routeSummary = `${pickup.split(',')[0]} \u2192 ${delivery.split(',')[0]}`; // Uses first part of address
+                                    const isOpen = openMenuId === service.id;
+
+                                    return (
+                                        <tr key={service.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors relative">
+                                            <td className="p-4 text-slate-600 dark:text-slate-300 font-medium">{new Date(service.date).toLocaleDateString()}</td>
+                                            <td className="p-4 font-bold text-slate-800 dark:text-white">{getClientName(service.clientId)}</td>
+                                            <td className="p-4 text-slate-600 dark:text-slate-300 truncate max-w-xs" title={routeSummary}>
+                                                <div className="flex items-center gap-2">
+                                                    <MapPin size={14} className="text-slate-400 shrink-0" />
+                                                    {routeSummary}
+                                                </div>
+                                            </td>
+                                            <td className="p-4 text-right font-bold text-slate-800 dark:text-white">R$ {service.cost.toFixed(2)}</td>
+                                            <td className="p-4 text-center">
+                                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${service.paid ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                                                    {service.paid ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                                                    {service.paid ? 'PAGO' : 'PENDENTE'}
+                                                </span>
+                                            </td>
+                                            {/* Coluna Status do Serviço removida */}
+                                            <td className="p-4 text-center relative">
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); setOpenMenuId(isOpen ? null : service.id); }}
+                                                    className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors"
+                                                >
+                                                    <MoreVertical size={18} />
+                                                </button>
+                                                {isOpen && (
+                                                    <div className="absolute right-4 top-14 z-10 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 py-2 animate-fade-in">
+                                                        <button 
+                                                            onClick={() => handleTogglePayment(service)}
+                                                            className="w-full text-left px-4 py-2.5 text-sm font-medium flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+                                                        >
+                                                            <DollarSign size={16} className={service.paid ? "text-amber-500" : "text-emerald-500"} />
+                                                            Marcar como {service.paid ? 'Pendente' : 'Pago'}
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => { /* Implement Edit Logic here or navigate */ toast.info("Funcionalidade de edição rápida em breve."); setOpenMenuId(null); }}
+                                                            className="w-full text-left px-4 py-2.5 text-sm font-medium flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-blue-600 dark:text-blue-400 transition-colors"
+                                                        >
+                                                            <Pencil size={16} />
+                                                            Editar Corrida
+                                                        </button>
+                                                        <div className="my-1 border-b border-slate-100 dark:border-slate-700"></div>
+                                                        <button 
+                                                            onClick={() => handleDeleteService(service.id)}
+                                                            className="w-full text-left px-4 py-2.5 text-sm font-medium flex items-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 transition-colors"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                            Excluir Corrida
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {isOpen && (
+                                                    <div className="fixed inset-0 z-0" onClick={() => setOpenMenuId(null)}></div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    )
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* NEW SERVICE MODAL (QUICK ADD) */}
+            {showNewServiceModal && (
+                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 sm:p-0 animate-fade-in">
+                    <div className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-700 animate-slide-up sm:animate-slide-up max-h-[90vh] flex flex-col">
+                        <div className="flex justify-between items-center p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                <Bike size={20} className="text-blue-600" />
+                                Nova Corrida Rápida
+                            </h3>
+                            <button onClick={resetForm} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleCreateService} className="overflow-y-auto p-6 space-y-6 flex-1">
+                            {/* Client & Date */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Cliente *</label>
+                                    <div className="relative">
+                                        <div className="absolute left-3 top-3 text-slate-400"><UserIcon size={18} /></div>
+                                        <select required className="w-full pl-10 p-3 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white appearance-none font-medium" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
+                                            <option value="" disabled>Selecione...</option>
+                                            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Data *</label>
+                                    <div className="relative">
+                                        <div className="absolute left-3 top-3 text-slate-400"><Calendar size={18} /></div>
+                                        <input required type="date" className="w-full pl-10 p-3 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium appearance-none" value={serviceDate} onChange={e => setServiceDate(e.target.value)} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Route */}
+                            <div className="space-y-4">
+                                <div className="space-y-3">
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Retirada(s)</label>
+                                    {pickupAddresses.map((addr, idx) => (
+                                        <div key={`p-${idx}`} className="flex gap-2">
+                                            <div className="relative flex-1">
+                                                <div className="absolute left-3 top-3 text-blue-500"><MapPin size={18} /></div>
+                                                <input required className="w-full pl-10 p-3 border border-blue-200 dark:border-blue-900/50 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium placeholder-slate-400" value={addr} onChange={e => handleAddressChange('pickup', idx, e.target.value)} placeholder="Endereço de coleta" />
+                                            </div>
+                                            {pickupAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('pickup', idx)} className="p-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"><Trash2 size={18} /></button>}
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={() => handleAddAddress('pickup')} className="text-sm text-blue-600 dark:text-blue-400 font-bold hover:underline flex items-center gap-1"><Plus size={16} /> Adicionar Parada</button>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Entrega(s)</label>
+                                    {deliveryAddresses.map((addr, idx) => (
+                                        <div key={`d-${idx}`} className="flex gap-2">
+                                            <div className="relative flex-1">
+                                                <div className="absolute left-3 top-3 text-emerald-500"><MapPin size={18} /></div>
+                                                <input required className="w-full pl-10 p-3 border border-emerald-200 dark:border-emerald-900/50 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium placeholder-slate-400" value={addr} onChange={e => handleAddressChange('delivery', idx, e.target.value)} placeholder="Endereço de entrega" />
+                                            </div>
+                                            {deliveryAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('delivery', idx)} className="p-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"><Trash2 size={18} /></button>}
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={() => handleAddAddress('delivery')} className="text-sm text-emerald-600 dark:text-emerald-400 font-bold hover:underline flex items-center gap-1"><Plus size={16} /> Adicionar Parada</button>
+                                </div>
+                            </div>
+
+                            {/* Financials & Info */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                                <div>
+                                    <label className="block text-sm font-medium text-emerald-700 dark:text-emerald-400 mb-1">Valor Cobrado (R$)</label>
+                                    <div className="relative">
+                                        <div className="absolute left-3 top-3 text-emerald-500"><DollarSign size={18} /></div>
+                                        <input required type="number" min="0" step="0.01" className="w-full pl-10 p-3 border border-emerald-200 dark:border-emerald-900/50 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-bold placeholder-slate-400" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-red-700 dark:text-red-400 mb-1">Pago ao Motoboy (R$)</label>
+                                    <div className="relative">
+                                        <div className="absolute left-3 top-3 text-red-500"><Bike size={18} /></div>
+                                        <input required type="number" min="0" step="0.01" className="w-full pl-10 p-3 border border-red-200 dark:border-red-900/50 rounded-xl focus:ring-2 focus:ring-red-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-bold placeholder-slate-400" value={driverFee} onChange={e => setDriverFee(e.target.value)} placeholder="0.00" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Solicitante</label>
+                                    <div className="relative">
+                                        <div className="absolute left-3 top-3 text-slate-400"><UserIcon size={18} /></div>
+                                        <input required className="w-full pl-10 p-3 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium placeholder-slate-400" value={requester} onChange={e => setRequester(e.target.value)} placeholder="Nome" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Payment & Status Info - CAMPO DE STATUS REMOVIDO AQUI */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-700 animate-fade-in">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Forma de Pagamento</label>
+                                    <div className="flex gap-2">
+                                        {(['PIX', 'CASH', 'CARD'] as PaymentMethod[]).map(method => (
+                                            <button
+                                                key={method}
+                                                type="button"
+                                                onClick={() => setPaymentMethod(method)}
+                                                className={`flex-1 flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${paymentMethod === method
+                                                    ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-500 text-blue-700 dark:text-blue-400 font-bold shadow-sm'
+                                                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                                                    }`}
+                                            >
+                                                {method === 'PIX' && <QrCode size={20} className="mb-1" />}
+                                                {method === 'CASH' && <Banknote size={20} className="mb-1" />}
+                                                {method === 'CARD' && <CreditCard size={20} className="mb-1" />}
+                                                <span className="text-xs">{method === 'PIX' ? 'Pix' : method === 'CASH' ? 'Dinheiro' : 'Cartão'}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Payment Status Toggle */}
+                                <div className="flex items-center justify-center">
+                                     <label className={`w-full flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isPaid ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400 shadow-sm' : 'bg-amber-50 dark:bg-amber-900/30 border-amber-500 text-amber-700 dark:text-amber-400 shadow-sm'}`}>
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isPaid ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'}`}>
+                                                 {isPaid ? <CheckCircle size={24} /> : <AlertCircle size={24} />}
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-sm">Pagamento {isPaid ? 'Realizado' : 'Pendente'}</span>
+                                                <span className="text-xs opacity-80">{isPaid ? 'Já recebido' : 'Aguardando'}</span>
+                                            </div>
+                                        </div>
+                                        <input type="checkbox" className="hidden" checked={isPaid} onChange={e => setIsPaid(e.target.checked)} />
+                                         <div className={`w-12 h-6 rounded-full p-1 transition-colors ${isPaid ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                                            <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${isPaid ? 'translate-x-6' : ''}`}></div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </form>
+
+                        <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex justify-end gap-3">
+                            <button type="button" onClick={resetForm} className="px-4 py-2.5 text-slate-600 dark:text-slate-400 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors">
+                                Cancelar
+                            </button>
+                            <button type="submit" onClick={handleCreateService} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-sm flex items-center gap-2 transition-all">
+                                <CheckCircle size={20} />
+                                Confirmar Corrida
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
-            </div>
         </div>
-
-        {/* Right Column: Expenses & Methods */}
-        <div className="flex flex-col gap-6">
-            {/* Revenue Breakdown by Method */}
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-                <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Receitas por Método</h2>
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-100 dark:border-emerald-800/50">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-white dark:bg-slate-800 text-emerald-600 rounded-lg shadow-sm"><Banknote size={18} /></div>
-                            <span className="text-slate-800 dark:text-slate-200 font-bold">Dinheiro (Caixa)</span>
-                        </div>
-                        <span className="font-bold text-emerald-700 dark:text-emerald-400">R$ {stats.revenueByMethod['CASH'].toFixed(2)}</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-white dark:bg-slate-800 text-blue-600 rounded-lg shadow-sm"><QrCode size={18} /></div>
-                            <span className="text-slate-700 dark:text-slate-300 font-medium">Pix</span>
-                        </div>
-                        <span className="font-semibold text-slate-800 dark:text-white">R$ {stats.revenueByMethod['PIX'].toFixed(2)}</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-white dark:bg-slate-800 text-purple-600 rounded-lg shadow-sm"><CreditCard size={18} /></div>
-                            <span className="text-slate-700 dark:text-slate-300 font-medium">Cartão</span>
-                        </div>
-                        <span className="font-semibold text-slate-800 dark:text-white">R$ {stats.revenueByMethod['CARD'].toFixed(2)}</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Expense Breakdown */}
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex-1">
-                <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Detalhamento de Gastos</h2>
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-lg"><Bike size={18} /></div>
-                            <span className="text-slate-700 dark:text-slate-300 font-medium">Motoboy</span>
-                        </div>
-                        <span className="font-semibold text-slate-800 dark:text-white">R$ {stats.totalDriverPay.toFixed(2)}</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-orange-100 dark:bg-orange-900/30 text-orange-600 rounded-lg"><Fuel size={18} /></div>
-                            <span className="text-slate-700 dark:text-slate-300 font-medium">Gasolina</span>
-                        </div>
-                        <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['GAS'] || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-lg"><Utensils size={18} /></div>
-                            <span className="text-slate-700 dark:text-slate-300 font-medium">Almoço</span>
-                        </div>
-                        <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['LUNCH'] || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg"><Wallet size={18} /></div>
-                            <span className="text-slate-700 dark:text-slate-300 font-medium">Outros</span>
-                        </div>
-                        <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['OTHER'] || 0).toFixed(2)}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-      </div>
-
-      {/* Top Clients Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top Clients by Revenue */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-4">
-                <Trophy size={20} className="text-yellow-500" />
-                Top Clientes (Faturamento)
-            </h2>
-            <div className="space-y-3">
-                {topClients.byRevenue.length === 0 ? (
-                    <p className="text-slate-400 text-sm italic">Sem dados para exibir.</p>
-                ) : (
-                    topClients.byRevenue.map((client, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-100 dark:border-slate-700">
-                             <div className="flex items-center gap-3">
-                                 <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${idx === 0 ? 'bg-yellow-100 text-yellow-700' : idx === 1 ? 'bg-slate-200 text-slate-700' : idx === 2 ? 'bg-orange-100 text-orange-800' : 'bg-slate-100 text-slate-500'}`}>
-                                     {idx + 1}
-                                 </span>
-                                 <span className="font-medium text-slate-800 dark:text-white">{client.name}</span>
-                             </div>
-                             <span className="font-bold text-slate-700 dark:text-slate-300">R$ {client.revenue.toFixed(2)}</span>
-                        </div>
-                    ))
-                )}
-            </div>
-        </div>
-
-        {/* Top Clients by Volume */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-4">
-                <Package size={20} className="text-blue-500" />
-                Top Clientes (Volume de Serviços)
-            </h2>
-            <div className="space-y-3">
-                {topClients.byCount.length === 0 ? (
-                    <p className="text-slate-400 text-sm italic">Sem dados para exibir.</p>
-                ) : (
-                    topClients.byCount.map((client, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-100 dark:border-slate-700">
-                             <div className="flex items-center gap-3">
-                                 <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${idx === 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
-                                     {idx + 1}
-                                 </span>
-                                 <span className="font-medium text-slate-800 dark:text-white">{client.name}</span>
-                             </div>
-                             <span className="font-bold text-slate-700 dark:text-slate-300">{client.count} serviços</span>
-                        </div>
-                    ))
-                )}
-            </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+    );
+}
