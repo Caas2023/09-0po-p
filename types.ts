@@ -5,11 +5,10 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  password: string; // In a real app, this would be hashed.
+  password: string;
   phone: string;
   role: UserRole;
   status: UserStatus;
-  // Company Details for Reports
   companyName?: string;
   companyAddress?: string;
   companyCnpj?: string;
@@ -17,7 +16,7 @@ export interface User {
 
 export interface Client {
   id: string;
-  ownerId: string; // Link to the user who owns this client
+  ownerId: string;
   name: string;
   email: string;
   phone: string;
@@ -29,11 +28,12 @@ export interface Client {
 }
 
 export type PaymentMethod = 'PIX' | 'CASH' | 'CARD';
-// REMOVIDO: export type ServiceStatus ...
+// RESTAURADO: O sistema precisa disso para os gráficos
+export type ServiceStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
 
 export interface ServiceRecord {
   id: string;
-  ownerId: string; // Link to the user who owns this service
+  ownerId: string;
   clientId: string;
   pickupAddresses: string[]; 
   deliveryAddresses: string[]; 
@@ -45,14 +45,14 @@ export interface ServiceRecord {
   imageUrl?: string;
   paid: boolean; 
   paymentMethod?: PaymentMethod;
-  // REMOVIDO: status: ServiceStatus;
+  status: ServiceStatus; // RESTAURADO
 }
 
 export type ExpenseCategory = 'GAS' | 'LUNCH' | 'OTHER';
 
 export interface ExpenseRecord {
   id: string;
-  ownerId: string; // Link to the user who owns this expense
+  ownerId: string;
   category: ExpenseCategory;
   amount: number;
   date: string;
@@ -76,8 +76,6 @@ export interface NavState {
   clientId?: string;
 }
 
-// --- DATABASE INTEGRATION TYPES ---
-
 export type DbProvider = 'FIREBASE' | 'SUPABASE' | 'MONGODB' | 'WEBHOOK' | 'GOOGLE_DRIVE';
 
 export interface DatabaseConnection {
@@ -86,7 +84,7 @@ export interface DatabaseConnection {
   name: string;
   isActive: boolean;
   endpointUrl: string;
-  apiKey?: string; // Authorization header or query param
+  apiKey?: string;
   lastBackupStatus: 'SUCCESS' | 'ERROR' | 'PENDING' | 'NEVER';
   lastBackupTime?: string;
 }
