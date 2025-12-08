@@ -35,13 +35,17 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
     async deleteUser(id: string): Promise<void> {
         const { error } = await this.supabase.from('users').delete().eq('id', id);
-        if (error) throw new Error('Falha ao excluir usuário');
+        if (error) {
+            console.error('Supabase delete user error:', error);
+            throw new Error('Falha ao excluir usuário');
+        }
     }
 
     // --- Clients ---
     async getClients(ownerId: string): Promise<Client[]> {
         const { data, error } = await this.supabase.from('clients').select('*').eq('owner_id', ownerId);
         if (error) return [];
+
         return data.map((d: any) => ({
             ...d,
             ownerId: d.owner_id,
@@ -69,7 +73,10 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
     async deleteClient(id: string): Promise<void> {
         const { error } = await this.supabase.from('clients').delete().eq('id', id);
-        if (error) throw new Error('Falha ao excluir cliente');
+        if (error) {
+            console.error('Supabase delete error:', error);
+            throw new Error('Falha ao excluir cliente no Supabase');
+        }
     }
 
     // --- Services ---
@@ -84,7 +91,8 @@ export class SupabaseAdapter implements DatabaseAdapter {
             deliveryAddresses: d.delivery_addresses,
             driverFee: d.driver_fee,
             requesterName: d.requester_name,
-            paymentMethod: d.payment_method
+            paymentMethod: d.payment_method,
+            paid: d.paid // Certifique-se de que o paid está vindo do banco
         })) as ServiceRecord[];
     }
 
@@ -94,7 +102,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
             owner_id: service.ownerId,
             client_id: service.clientId,
             cost: service.cost,
-            status: service.status,
+            // status: service.status, // REMOVIDO
             date: service.date,
             pickup_addresses: service.pickupAddresses,
             delivery_addresses: service.deliveryAddresses,
@@ -110,7 +118,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
     async updateService(service: ServiceRecord): Promise<void> {
         const payload = {
             cost: service.cost,
-            status: service.status,
+            // status: service.status, // REMOVIDO
             date: service.date,
             pickup_addresses: service.pickupAddresses,
             delivery_addresses: service.deliveryAddresses,
@@ -125,10 +133,13 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
     async deleteService(id: string): Promise<void> {
         const { error } = await this.supabase.from('services').delete().eq('id', id);
-        if (error) throw new Error('Falha ao excluir serviço');
+        if (error) {
+            console.error('Supabase delete error (service):', error);
+            throw new Error('Falha ao excluir serviço no Supabase');
+        }
     }
 
-    // --- Expenses (NOVO) ---
+    // --- Expenses ---
     async getExpenses(ownerId: string): Promise<ExpenseRecord[]> {
         const { data, error } = await this.supabase.from('expenses').select('*').eq('owner_id', ownerId);
         if (error) return [];
