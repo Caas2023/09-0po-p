@@ -51,17 +51,14 @@ const saveList = <T>(key: string, list: T[]) => {
 
 // --- User / Auth (Hybrid) ---
 
-// ATUALIZADO: Agora busca do adaptador (Banco de Dados) para listar no Admin Panel
 export const getUsers = async (): Promise<User[]> => {
   return await dbAdapter.getUsers();
 };
 
 export const initializeData = async () => {
-  // Check DB
   try {
     const users = await dbAdapter.getUsers();
     if (users.length === 0) {
-      // Seed Admin
       const admin: User = {
         id: 'admin-1',
         name: 'Administrador',
@@ -72,7 +69,6 @@ export const initializeData = async () => {
         status: 'ACTIVE'
       };
       await dbAdapter.saveUser(admin);
-      // Also save locally for legacy sync checks if needed
       saveList(STORAGE_KEYS.USERS, [admin]);
     }
   } catch (e) {
@@ -81,10 +77,7 @@ export const initializeData = async () => {
 };
 
 export const updateUserProfile = async (user: User) => {
-  // ATUALIZADO: Usa updateUser em vez de saveUser para evitar conflitos de ID
   await dbAdapter.updateUser(user);
-  
-  // Update session if it's current user
   const current = getCurrentUser();
   if (current && current.id === user.id) {
     localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(user));
@@ -92,7 +85,6 @@ export const updateUserProfile = async (user: User) => {
 };
 
 export const requestPasswordReset = async (email: string) => {
-  // Mock implementation
   const users = await dbAdapter.getUsers();
   const user = users.find(u => u.email === email);
   if (!user) return { success: false, message: 'Email não encontrado.' };
@@ -106,7 +98,7 @@ export const completePasswordReset = async (email: string, code: string, newPass
   if (!user) return { success: false, message: 'Usuário não encontrado.' };
 
   user.password = newPass;
-  await dbAdapter.updateUser(user); // Atualizado para usar updateUser
+  await dbAdapter.updateUser(user);
   return { success: true };
 };
 
@@ -127,8 +119,6 @@ export const registerUser = async (userData: Partial<User>): Promise<{ success: 
   };
 
   await dbAdapter.saveUser(newUser);
-
-  // Auto login
   localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(newUser));
   return { success: true, user: newUser };
 };
@@ -154,7 +144,6 @@ export const getCurrentUser = (): User | null => {
   return data ? JSON.parse(data) : null;
 };
 
-// ADICIONADO: Exclusão de Usuário para Painel Admin
 export const deleteUser = async (id: string) => {
   await dbAdapter.deleteUser(id);
 };
@@ -164,13 +153,9 @@ export const deleteUser = async (id: string) => {
 export const getClients = async (): Promise<Client[]> => {
   const user = getCurrentUser();
   if (!user) return [];
-  // Admin gets all? Adapter interface expects ownerId.
-  // We might need to adjust Adapter to support "All" or Loop.
-  // For now, let's assume we pass user ID.
   return await dbAdapter.getClients(user.id);
 };
 
-// Legacy Sync Version (Deprecated - for backward compat if needed)
 export const getClientsSync = (): Client[] => {
   const user = getCurrentUser();
   const all = getList<Client>(STORAGE_KEYS.CLIENTS);
@@ -184,17 +169,13 @@ export const saveClient = async (client: Client) => {
     client.ownerId = user.id;
   }
   await dbAdapter.saveClient(client);
-  // Keep local sync for instant UI updates if we are in Hybrid mode (optional)
   const list = getList<Client>(STORAGE_KEYS.CLIENTS);
   list.push(client);
   saveList(STORAGE_KEYS.CLIENTS, list);
 };
 
-// ADICIONADO: Exclusão de Cliente
 export const deleteClient = async (id: string) => {
   await dbAdapter.deleteClient(id);
-  
-  // Atualiza espelho local
   const list = getList<Client>(STORAGE_KEYS.CLIENTS);
   const newList = list.filter(c => c.id !== id);
   saveList(STORAGE_KEYS.CLIENTS, newList);
@@ -208,7 +189,6 @@ export const getServices = async (): Promise<ServiceRecord[]> => {
   return await dbAdapter.getServices(user.id);
 };
 
-// Legacy Sync Version
 export const getServicesSync = (): ServiceRecord[] => {
   const user = getCurrentUser();
   const all = getList<ServiceRecord>(STORAGE_KEYS.SERVICES);
@@ -230,7 +210,6 @@ export const saveService = async (service: ServiceRecord) => {
 
 export const updateService = async (service: ServiceRecord) => {
   await dbAdapter.updateService(service);
-  // Local Mirror
   const list = getList<ServiceRecord>(STORAGE_KEYS.SERVICES);
   const index = list.findIndex(s => s.id === service.id);
   if (index !== -1) {
@@ -239,23 +218,17 @@ export const updateService = async (service: ServiceRecord) => {
   }
 };
 
-// ADICIONADO: Exclusão de Serviço
 export const deleteService = async (id: string) => {
   await dbAdapter.deleteService(id);
-
-  // Atualiza espelho local
   const list = getList<ServiceRecord>(STORAGE_KEYS.SERVICES);
   const newList = list.filter(s => s.id !== id);
   saveList(STORAGE_KEYS.SERVICES, newList);
 };
 
-// --- Bulk Operations ---
 export const bulkUpdateServices = async (updates: ServiceRecord[]) => {
-  // Naive implementation: loop. Better DBs have batch ops.
   for (const s of updates) {
     await dbAdapter.updateService(s);
   }
-  // Local Mirror (Optional, for sync legacy)
   const list = getList<ServiceRecord>(STORAGE_KEYS.SERVICES);
   updates.forEach(u => {
     const index = list.findIndex(s => s.id === u.id);
@@ -267,8 +240,6 @@ export const bulkUpdateServices = async (updates: ServiceRecord[]) => {
 export const getServicesByClient = async (clientId: string): Promise<ServiceRecord[]> => {
   const user = getCurrentUser();
   if (!user) return [];
-  // If adapter supports filtering by client natively, use it.
-  // Otherwise filter in memory.
   const services = await dbAdapter.getServices(user.id);
   return services.filter(s => s.clientId === clientId);
 };
@@ -276,32 +247,25 @@ export const getServicesByClient = async (clientId: string): Promise<ServiceReco
 
 // --- Expenses ---
 
-// CORRIGIDO: Agora usa o adaptador para buscar despesas
 export const getExpenses = async (): Promise<ExpenseRecord[]> => {
   const user = getCurrentUser();
   if (!user) return [];
   return await dbAdapter.getExpenses(user.id);
 };
 
-// CORRIGIDO: Agora usa o adaptador para salvar despesas
 export const saveExpense = async (expense: ExpenseRecord) => {
   const user = getCurrentUser();
   if (user) {
     expense.ownerId = user.id;
   }
   await dbAdapter.saveExpense(expense);
-  
-  // Atualiza espelho local
   const list = getList<ExpenseRecord>(STORAGE_KEYS.EXPENSES);
   list.push(expense);
   saveList(STORAGE_KEYS.EXPENSES, list);
 };
 
-// CORRIGIDO: Agora usa o adaptador para excluir despesas
 export const deleteExpense = async (id: string) => {
   await dbAdapter.deleteExpense(id);
-  
-  // Atualiza espelho local
   const list = getList<ExpenseRecord>(STORAGE_KEYS.EXPENSES);
   const newList = list.filter(e => e.id !== id);
   saveList(STORAGE_KEYS.EXPENSES, newList);
