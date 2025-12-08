@@ -197,9 +197,16 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
                             </select>
                         </div>
 
+                        {/* EMAIL AGORA É OPCIONAL */}
                         <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Email *</label>
-                            <input required placeholder="contato@empresa.com" type="email" className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newClientEmail} onChange={e => setNewClientEmail(e.target.value)} />
+                            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Email</label>
+                            <input 
+                                placeholder="contato@empresa.com" 
+                                type="email" 
+                                className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white" 
+                                value={newClientEmail} 
+                                onChange={e => setNewClientEmail(e.target.value)} 
+                            />
                         </div>
 
                         <div className="space-y-1">
@@ -261,7 +268,7 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
                                 {client.contactPerson && <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">Contato: {client.contactPerson}</p>}
 
                                 <div className="text-sm text-slate-500 dark:text-slate-400 space-y-1">
-                                    <p className="truncate">{client.email}</p>
+                                    <p className="truncate">{client.email || 'Sem email'}</p>
                                     <p>{client.phone}</p>
                                 </div>
 
