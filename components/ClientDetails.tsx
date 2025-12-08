@@ -711,7 +711,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 doc.setFont(undefined, 'bold');
                 doc.text(`Responsável:`, marginX, currentY);
                 doc.setFont(undefined, 'normal');
-                // Usa o usuário atual como responsável (como na imagem "Carlos")
+                // Use current user as responsavel as shown in image example ("Carlos") or client contact
                 doc.text(currentUser.name, marginX + 25, currentY);
                 currentY += 4;
 
@@ -842,12 +842,13 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                     // Simple text footer
                     doc.setFontSize(8);
                     doc.setTextColor(150);
+                    // doc.text(`LogiTrack CRM`, marginX, footerY); // Optional branding
                     
-                    // Page number centered
+                    // Page number centered like the image viewer style
                     doc.setFillColor(30, 30, 30); // Dark grey pill
-                    doc.roundedRect((pageWidth/2) - 15, footerY - 2, 30, 6, 3, 3, 'F');
-                    doc.setTextColor(255);
-                    doc.text(`${i} / ${pageCount}`, pageWidth/2, footerY + 2, { align: 'center' });
+                    // doc.roundedRect((pageWidth/2) - 15, footerY - 2, 30, 6, 3, 3, 'F');
+                    // doc.setTextColor(255);
+                    // doc.text(`${i} / ${pageCount}`, pageWidth/2, footerY + 2, { align: 'center' });
                 }
 
                 doc.save(`Relatorio_${client.name.replace(/\s+/g, '_')}.pdf`);
@@ -1305,19 +1306,8 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                 </div>
 
                                 <div className="md:col-span-2 pt-4 border-t border-slate-200 dark:border-slate-700 grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div>
-                                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Status da Entrega</label>
-                                        <select
-                                            className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-                                            value={serviceStatus}
-                                            onChange={e => setServiceStatus(e.target.value as ServiceStatus)}
-                                        >
-                                            <option value="PENDING">Pendente (Aguardando Coleta)</option>
-                                            <option value="IN_PROGRESS">Em Rota (Motoboy Saiu)</option>
-                                            <option value="DONE">Concluído (Entregue)</option>
-                                            <option value="CANCELLED">Cancelado</option>
-                                        </select>
-                                    </div>
+                                    
+                                    {/* --- REMOVIDO: CAMPO STATUS DA ENTREGA --- */}
 
                                     <div>
                                         <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Método de Pagamento</label>
