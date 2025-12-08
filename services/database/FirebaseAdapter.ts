@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, doc, setDoc, query, where, updateDoc, deleteDoc } from 'firebase/firestore';
 import { DatabaseAdapter } from './types';
-import { Client, ServiceRecord, User } from '../../types';
+import { Client, ServiceRecord, ExpenseRecord, User } from '../../types';
 
 export class FirebaseAdapter implements DatabaseAdapter {
     private db: any;
@@ -25,16 +25,12 @@ export class FirebaseAdapter implements DatabaseAdapter {
         });
         return users;
     }
-
     async saveUser(user: User): Promise<void> {
         await setDoc(doc(this.db, 'users', user.id), user);
     }
-
     async updateUser(user: User): Promise<void> {
         await updateDoc(doc(this.db, 'users', user.id), { ...user });
     }
-
-    // --- ADICIONADO: DELETE USER ---
     async deleteUser(id: string): Promise<void> {
         await deleteDoc(doc(this.db, 'users', id));
     }
@@ -47,11 +43,9 @@ export class FirebaseAdapter implements DatabaseAdapter {
         querySnapshot.forEach((doc) => list.push(doc.data() as Client));
         return list;
     }
-
     async saveClient(client: Client): Promise<void> {
         await setDoc(doc(this.db, 'clients', client.id), client);
     }
-
     async deleteClient(id: string): Promise<void> {
         await deleteDoc(doc(this.db, 'clients', id));
     }
@@ -64,16 +58,28 @@ export class FirebaseAdapter implements DatabaseAdapter {
         querySnapshot.forEach((doc) => list.push(doc.data() as ServiceRecord));
         return list;
     }
-
     async saveService(service: ServiceRecord): Promise<void> {
         await setDoc(doc(this.db, 'services', service.id), service);
     }
-
     async updateService(service: ServiceRecord): Promise<void> {
         await updateDoc(doc(this.db, 'services', service.id), { ...service });
     }
-
     async deleteService(id: string): Promise<void> {
         await deleteDoc(doc(this.db, 'services', id));
+    }
+
+    // --- Expenses (IMPLEMENTADO) ---
+    async getExpenses(ownerId: string): Promise<ExpenseRecord[]> {
+        const q = query(collection(this.db, 'expenses'), where('ownerId', '==', ownerId));
+        const querySnapshot = await getDocs(q);
+        const list: ExpenseRecord[] = [];
+        querySnapshot.forEach((doc) => list.push(doc.data() as ExpenseRecord));
+        return list;
+    }
+    async saveExpense(expense: ExpenseRecord): Promise<void> {
+        await setDoc(doc(this.db, 'expenses', expense.id), expense);
+    }
+    async deleteExpense(id: string): Promise<void> {
+        await deleteDoc(doc(this.db, 'expenses', id));
     }
 }
