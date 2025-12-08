@@ -1,6 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { DatabaseAdapter } from './types';
-import { Client, ServiceRecord, User } from '../../types';
+import { Client, ServiceRecord, ExpenseRecord, User } from '../../types';
 
 export class SupabaseAdapter implements DatabaseAdapter {
     private supabase: SupabaseClient;
@@ -33,20 +33,15 @@ export class SupabaseAdapter implements DatabaseAdapter {
         if (error) console.error('Supabase update error (user):', error);
     }
 
-    // --- ADICIONADO: DELETE USER ---
     async deleteUser(id: string): Promise<void> {
         const { error } = await this.supabase.from('users').delete().eq('id', id);
-        if (error) {
-            console.error('Supabase delete user error:', error);
-            throw new Error('Falha ao excluir usuário');
-        }
+        if (error) throw new Error('Falha ao excluir usuário');
     }
 
     // --- Clients ---
     async getClients(ownerId: string): Promise<Client[]> {
         const { data, error } = await this.supabase.from('clients').select('*').eq('owner_id', ownerId);
         if (error) return [];
-
         return data.map((d: any) => ({
             ...d,
             ownerId: d.owner_id,
@@ -74,10 +69,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
     async deleteClient(id: string): Promise<void> {
         const { error } = await this.supabase.from('clients').delete().eq('id', id);
-        if (error) {
-            console.error('Supabase delete error:', error);
-            throw new Error('Falha ao excluir cliente no Supabase');
-        }
+        if (error) throw new Error('Falha ao excluir cliente');
     }
 
     // --- Services ---
@@ -133,9 +125,34 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
     async deleteService(id: string): Promise<void> {
         const { error } = await this.supabase.from('services').delete().eq('id', id);
-        if (error) {
-            console.error('Supabase delete error (service):', error);
-            throw new Error('Falha ao excluir serviço no Supabase');
-        }
+        if (error) throw new Error('Falha ao excluir serviço');
+    }
+
+    // --- Expenses (NOVO) ---
+    async getExpenses(ownerId: string): Promise<ExpenseRecord[]> {
+        const { data, error } = await this.supabase.from('expenses').select('*').eq('owner_id', ownerId);
+        if (error) return [];
+        return data.map((d: any) => ({
+            ...d,
+            ownerId: d.owner_id
+        })) as ExpenseRecord[];
+    }
+
+    async saveExpense(expense: ExpenseRecord): Promise<void> {
+        const payload = {
+            id: expense.id,
+            owner_id: expense.ownerId,
+            category: expense.category,
+            amount: expense.amount,
+            date: expense.date,
+            description: expense.description
+        };
+        const { error } = await this.supabase.from('expenses').insert(payload);
+        if (error) console.error('Supabase insert error (expense):', error);
+    }
+
+    async deleteExpense(id: string): Promise<void> {
+        const { error } = await this.supabase.from('expenses').delete().eq('id', id);
+        if (error) throw new Error('Falha ao excluir despesa');
     }
 }
