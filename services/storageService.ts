@@ -276,24 +276,32 @@ export const getServicesByClient = async (clientId: string): Promise<ServiceReco
 
 // --- Expenses ---
 
+// CORRIGIDO: Agora usa o adaptador para buscar despesas
 export const getExpenses = async (): Promise<ExpenseRecord[]> => {
   const user = getCurrentUser();
   if (!user) return [];
-  // Retaining local read for safety until types are updated in adapter interface for expenses
-  return getList<ExpenseRecord>(STORAGE_KEYS.EXPENSES);
+  return await dbAdapter.getExpenses(user.id);
 };
 
+// CORRIGIDO: Agora usa o adaptador para salvar despesas
 export const saveExpense = async (expense: ExpenseRecord) => {
   const user = getCurrentUser();
   if (user) {
     expense.ownerId = user.id;
   }
+  await dbAdapter.saveExpense(expense);
+  
+  // Atualiza espelho local
   const list = getList<ExpenseRecord>(STORAGE_KEYS.EXPENSES);
   list.push(expense);
   saveList(STORAGE_KEYS.EXPENSES, list);
 };
 
+// CORRIGIDO: Agora usa o adaptador para excluir despesas
 export const deleteExpense = async (id: string) => {
+  await dbAdapter.deleteExpense(id);
+  
+  // Atualiza espelho local
   const list = getList<ExpenseRecord>(STORAGE_KEYS.EXPENSES);
   const newList = list.filter(e => e.id !== id);
   saveList(STORAGE_KEYS.EXPENSES, newList);
