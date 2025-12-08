@@ -31,12 +31,11 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
     const stats = useMemo(() => {
         const totalServices = services.length;
         const totalClients = clients.length;
-        // ATUALIZADO: Removemos a contagem de "Ativos" baseada em status
-        // Vamos contar apenas os que não foram pagos como uma métrica de atividade pendente
+        // ATUALIZADO: Removemos a contagem baseada em status
         const activeServices = services.filter(s => !s.paid).length; 
         const pendingPayment = services.filter(s => !s.paid).reduce((acc, curr) => acc + curr.cost, 0);
 
-        // Calculate percentage change (mock data for now)
+        // Mock percentage change
         const revenueChange = +12.5;
         const clientsChange = +5.2;
         const activeChange = -2.1;
@@ -61,8 +60,7 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
         } else if (filter === 'PAGO') {
             filtered = filtered.filter(s => s.paid);
         }
-        // Sort by date desc
-        return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10); // Show last 10
+        return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
     }, [services, filter]);
 
     const getClientName = (clientId: string) => {
@@ -134,7 +132,7 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
             requesterName: requester,
             paymentMethod: paymentMethod,
             paid: isPaid,
-            // status: 'PENDING' // REMOVIDO COMPLETAMENTE
+            // status removido
         };
 
         await saveService(newService);
@@ -274,6 +272,7 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
                                 <th className="p-4 font-bold">Cliente</th>
                                 <th className="p-4 font-bold">Rota Resumida</th>
                                 <th className="p-4 font-bold text-right">Valor</th>
+                                {/* COLUNA STATUS REMOVIDA DAQUI */}
                                 <th className="p-4 font-bold text-center">Status Pag.</th>
                                 <th className="p-4 font-bold text-center w-16"></th>
                             </tr>
@@ -301,6 +300,9 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
                                                 </div>
                                             </td>
                                             <td className="p-4 text-right font-bold text-slate-800 dark:text-white">R$ {service.cost.toFixed(2)}</td>
+                                            
+                                            {/* COLUNA STATUS REMOVIDA DAQUI */}
+                                            
                                             <td className="p-4 text-center">
                                                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${service.paid ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
                                                     {service.paid ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
@@ -445,7 +447,7 @@ export function Dashboard({ clients, services, currentUser, onRefresh }: Dashboa
                                 </div>
                             </div>
 
-                            {/* Payment & Status Info - CAMPO DE STATUS REMOVIDO */}
+                            {/* Payment Toggle (No Status Dropdown) */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-700 animate-fade-in">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Forma de Pagamento</label>
