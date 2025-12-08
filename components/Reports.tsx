@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Client, ServiceRecord, PaymentMethod, User, ServiceStatus } from '../types';
-import { FileSpreadsheet, Building2, FolderOpen, ChevronRight, FileText, CalendarRange, PieChart, CreditCard, Banknote, QrCode, AlertCircle, Table, ShieldCheck, FileDown, Loader2 } from 'lucide-react';
+import { Client, ServiceRecord, PaymentMethod, User } from '../types';
+import { FileSpreadsheet, Building2, FolderOpen, ChevronRight, FileText, PieChart, CreditCard, Banknote, QrCode, AlertCircle, Table, ShieldCheck, FileDown, Loader2 } from 'lucide-react';
 import { ServiceDocumentModal } from './ClientDetails';
 // @ts-ignore
 import { jsPDF } from 'jspdf';
@@ -239,6 +239,7 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
 
 
             // -- Table --
+            // REVISÃO: Coluna Status removida daqui
             const tableData = filteredData.map(s => [
                 new Date(s.date + 'T00:00:00').toLocaleDateString(),
                 getClientName(s.clientId),
@@ -250,6 +251,7 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
 
             autoTable(doc, {
                 startY: 80,
+                // REVISÃO: Cabeçalho 'Status' removido
                 head: [['Data', 'Cliente', 'Solicitante', 'Rota', 'Valor', 'Pagamento']],
                 body: tableData,
                 theme: 'striped',
@@ -274,7 +276,7 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
                     5: { cellWidth: 20, halign: 'center' }  // Payment Status
                 },
                 didParseCell: function(data: any) {
-                    // Color code status
+                    // REVISÃO: Índice ajustado para 5 porque removemos uma coluna
                     if (data.section === 'body' && data.column.index === 5) {
                         if (data.cell.raw === 'PAGO') {
                             data.cell.styles.textColor = [22, 163, 74]; // Green
@@ -318,6 +320,7 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
     const pickupHeaders = Array.from({ length: maxPickups }, (_, i) => `Coleta ${i + 1}`);
     const deliveryHeaders = Array.from({ length: maxDeliveries }, (_, i) => `Entrega ${i + 1}`);
 
+    // REVISÃO: 'Status Serviço' removido dos headers
     const headers = ['Data', 'Cliente', 'Solicitante', ...pickupHeaders, ...deliveryHeaders, 'Valor (R$)', 'Custo Motoboy (R$)', 'Lucro (R$)', 'Pagamento', 'Status Pagamento'];
     
     const rows = filteredData.map(s => {
@@ -336,7 +339,8 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
             safeString(s.requesterName),
             ...pickupCols,
             ...deliveryCols,
-            s.cost.toFixed(2).replace('.', ','), // Google Sheets prefers comma for decimals in BR locale usually
+            // REVISÃO: getStatusLabel removido daqui
+            s.cost.toFixed(2).replace('.', ','), 
             (s.driverFee || 0).toFixed(2).replace('.', ','),
             profit.toFixed(2).replace('.', ','),
             payment,
@@ -695,6 +699,7 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
                                     <th className="p-3 font-bold">Cliente</th>
                                     <th className="p-3 font-bold">Solicitante</th>
                                     <th className="p-3 font-bold">Valor (R$)</th>
+                                    {/* REVISÃO: Coluna de Status REMOVIDA DAQUI */}
                                     <th className="p-3 font-bold text-center">Pagamento</th>
                                     <th className="p-3 font-bold text-center">Status Pagamento</th>
                                     <th className="p-3 font-bold text-center">Doc</th>
@@ -724,6 +729,7 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
                                             <td className="p-3 font-bold text-slate-800 dark:text-white">
                                                 {s.cost.toFixed(2)}
                                             </td>
+                                            {/* REVISÃO: Coluna de Status REMOVIDA DAQUI TAMBÉM */}
                                             <td className="p-3 text-center">
                                                 <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300">
                                                     {getPaymentIcon(s.paymentMethod)}
