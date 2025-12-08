@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Client, ServiceRecord, PaymentMethod, User } from '../types';
-import { FileSpreadsheet, Building2, FolderOpen, ChevronRight, FileText, PieChart, CreditCard, Banknote, QrCode, AlertCircle, Table, ShieldCheck, FileDown, Loader2 } from 'lucide-react';
+import { FileSpreadsheet, Building2, FolderOpen, ChevronRight, FileText, PieChart, CreditCard, Banknote, QrCode, Table, ShieldCheck, FileDown, Loader2 } from 'lucide-react';
 import { ServiceDocumentModal } from './ClientDetails';
 // @ts-ignore
 import { jsPDF } from 'jspdf';
@@ -21,7 +21,6 @@ const getLocalDateStr = (d: Date) => {
 };
 
 export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser }) => {
-  // Default to current month using local time
   const [startDate, setStartDate] = useState<string>(() => {
       const d = new Date();
       d.setDate(1); 
@@ -29,7 +28,6 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
   });
   const [endDate, setEndDate] = useState<string>(() => {
       const d = new Date();
-      // Set to end of current month
       const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0);
       return getLocalDateStr(lastDay);
   });
@@ -40,32 +38,27 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-  // New Filters
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<'ALL' | PaymentMethod>('ALL');
   const [onlyWithCnpj, setOnlyWithCnpj] = useState(false);
 
-  // Calculate available months from data automatically
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
     services.forEach(s => {
         const dateStr = s.date.includes('T') ? s.date.split('T')[0] : s.date;
-        // Format: YYYY-MM
         months.add(dateStr.substring(0, 7)); 
     });
     
-    // Convert to array, sort descending (newest first), and map to useful objects
     return Array.from(months).sort().reverse().map(monthStr => {
         const [year, month] = monthStr.split('-');
         const date = new Date(parseInt(year), parseInt(month) - 1, 1);
         const label = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
         
-        // Calculate totals for this specific month
         const monthlyServices = services.filter(s => s.date.startsWith(monthStr));
         const total = monthlyServices.reduce((sum, s) => sum + s.cost, 0);
         
         return {
-            id: monthStr, // "2023-10"
-            label: label.charAt(0).toUpperCase() + label.slice(1), // "Outubro 2023"
+            id: monthStr,
+            label: label.charAt(0).toUpperCase() + label.slice(1),
             year,
             month,
             count: monthlyServices.length,
@@ -74,7 +67,6 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
     });
   }, [services]);
 
-  // Set initial label
   useEffect(() => {
       if (!selectedMonthLabel) {
           const d = new Date();
@@ -102,23 +94,19 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
   const filteredData = useMemo(() => {
     let filtered = services;
 
-    // Client Filter
     if (selectedClientId !== 'all') {
         filtered = filtered.filter(s => s.clientId === selectedClientId);
     }
 
-    // CNPJ Filter (Clients with Invoice/Nota Fiscal potential)
     if (onlyWithCnpj) {
         const clientsWithCnpj = new Set(clients.filter(c => c.cnpj && c.cnpj.trim() !== '').map(c => c.id));
         filtered = filtered.filter(s => clientsWithCnpj.has(s.clientId));
     }
 
-    // Payment Method Filter
     if (paymentMethodFilter !== 'ALL') {
         filtered = filtered.filter(s => (s.paymentMethod || 'PIX') === paymentMethodFilter);
     }
 
-    // Date Filter using robust string comparison
     if (startDate && endDate) {
         filtered = filtered.filter(s => {
              const dateStr = s.date.includes('T') ? s.date.split('T')[0] : s.date;
@@ -172,7 +160,6 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
             const doc = new jsPDF();
             const companyName = currentUser.companyName || currentUser.name || "LogiTrack CRM";
             
-            // -- Header --
             doc.setFillColor(30, 41, 59); // Slate 800
             doc.rect(0, 0, 210, 35, 'F');
             
@@ -184,7 +171,6 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
             doc.setTextColor(203, 213, 225); // Slate 300
             doc.text(companyName, 14, 26);
             
-            // Dates on the right
             doc.setFontSize(10);
             doc.text(`Gerado em: ${new Date().toLocaleDateString()}`, 196, 18, { align: 'right' });
             doc.text(`Período: ${new Date(startDate + 'T00:00:00').toLocaleDateString()}`, 196, 26, { align: 'right' });
@@ -196,8 +182,8 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
             const gap = 6;
             const startX = 14;
 
-            // Card 1: Total Services
-            doc.setFillColor(241, 245, 249); // Slate 100
+            // Card 1
+            doc.setFillColor(241, 245, 249); 
             doc.setDrawColor(226, 232, 240);
             doc.roundedRect(startX, cardY, cardWidth, cardHeight, 2, 2, 'FD');
             doc.setFontSize(8);
@@ -207,8 +193,8 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
             doc.setTextColor(15, 23, 42);
             doc.text(stats.count.toString(), startX + 5, cardY + 18);
 
-            // Card 2: Revenue
-            doc.setFillColor(236, 253, 245); // Emerald 50
+            // Card 2
+            doc.setFillColor(236, 253, 245); 
             doc.setDrawColor(167, 243, 208);
             doc.roundedRect(startX + cardWidth + gap, cardY, cardWidth, cardHeight, 2, 2, 'FD');
             doc.setFontSize(8);
@@ -217,8 +203,8 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
             doc.setFontSize(14);
             doc.text(`R$ ${stats.revenue.toFixed(2)}`, startX + cardWidth + gap + 5, cardY + 18);
 
-            // Card 3: Costs
-            doc.setFillColor(254, 242, 242); // Red 50
+            // Card 3
+            doc.setFillColor(254, 242, 242); 
             doc.setDrawColor(254, 202, 202);
             doc.roundedRect(startX + (cardWidth + gap) * 2, cardY, cardWidth, cardHeight, 2, 2, 'FD');
             doc.setFontSize(8);
@@ -227,8 +213,8 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
             doc.setFontSize(14);
             doc.text(`R$ ${stats.cost.toFixed(2)}`, startX + (cardWidth + gap) * 2 + 5, cardY + 18);
 
-             // Card 4: Profit
-            doc.setFillColor(240, 253, 244); // Green 50
+            // Card 4
+            doc.setFillColor(240, 253, 244); 
             doc.setDrawColor(187, 247, 208);
             doc.roundedRect(startX + (cardWidth + gap) * 3, cardY, cardWidth, cardHeight, 2, 2, 'FD');
             doc.setFontSize(8);
@@ -237,9 +223,7 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
             doc.setFontSize(14);
             doc.text(`R$ ${stats.profit.toFixed(2)}`, startX + (cardWidth + gap) * 3 + 5, cardY + 18);
 
-
-            // -- Table --
-            // REVISÃO: Coluna Status removida daqui
+            // -- Table (Status Removed) --
             const tableData = filteredData.map(s => [
                 new Date(s.date + 'T00:00:00').toLocaleDateString(),
                 getClientName(s.clientId),
@@ -251,12 +235,11 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
 
             autoTable(doc, {
                 startY: 80,
-                // REVISÃO: Cabeçalho 'Status' removido
                 head: [['Data', 'Cliente', 'Solicitante', 'Rota', 'Valor', 'Pagamento']],
                 body: tableData,
                 theme: 'striped',
                 headStyles: {
-                    fillColor: [30, 41, 59], // Slate 800
+                    fillColor: [30, 41, 59],
                     textColor: 255,
                     fontSize: 9,
                     fontStyle: 'bold',
@@ -268,28 +251,26 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
                     valign: 'middle'
                 },
                 columnStyles: {
-                    0: { cellWidth: 22 }, // Date
-                    1: { cellWidth: 35 }, // Client
-                    2: { cellWidth: 25 }, // Requester
-                    3: { cellWidth: 'auto' }, // Route (expands)
+                    0: { cellWidth: 22 }, 
+                    1: { cellWidth: 35 }, 
+                    2: { cellWidth: 25 }, 
+                    3: { cellWidth: 'auto' }, 
                     4: { cellWidth: 25, halign: 'right' }, // Value
                     5: { cellWidth: 20, halign: 'center' }  // Payment Status
                 },
                 didParseCell: function(data: any) {
-                    // REVISÃO: Índice ajustado para 5 porque removemos uma coluna
                     if (data.section === 'body' && data.column.index === 5) {
                         if (data.cell.raw === 'PAGO') {
-                            data.cell.styles.textColor = [22, 163, 74]; // Green
+                            data.cell.styles.textColor = [22, 163, 74];
                             data.cell.styles.fontStyle = 'bold';
                         } else {
-                            data.cell.styles.textColor = [217, 119, 6]; // Amber
+                            data.cell.styles.textColor = [217, 119, 6];
                             data.cell.styles.fontStyle = 'bold';
                         }
                     }
                 }
             });
 
-            // Footer
             const pageCount = doc.getNumberOfPages();
             for(let i = 1; i <= pageCount; i++) {
                 doc.setPage(i);
@@ -320,7 +301,7 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
     const pickupHeaders = Array.from({ length: maxPickups }, (_, i) => `Coleta ${i + 1}`);
     const deliveryHeaders = Array.from({ length: maxDeliveries }, (_, i) => `Entrega ${i + 1}`);
 
-    // REVISÃO: 'Status Serviço' removido dos headers
+    // Headers sem Status
     const headers = ['Data', 'Cliente', 'Solicitante', ...pickupHeaders, ...deliveryHeaders, 'Valor (R$)', 'Custo Motoboy (R$)', 'Lucro (R$)', 'Pagamento', 'Status Pagamento'];
     
     const rows = filteredData.map(s => {
@@ -329,7 +310,6 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
         const status = s.paid ? 'PAGO' : 'PENDENTE';
         
         const safeString = (str: string) => `"${str.replace(/"/g, '""')}"`;
-
         const pickupCols = Array.from({ length: maxPickups }, (_, i) => safeString(s.pickupAddresses[i] || ''));
         const deliveryCols = Array.from({ length: maxDeliveries }, (_, i) => safeString(s.deliveryAddresses[i] || ''));
 
@@ -339,18 +319,15 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
             safeString(s.requesterName),
             ...pickupCols,
             ...deliveryCols,
-            // REVISÃO: getStatusLabel removido daqui
-            s.cost.toFixed(2).replace('.', ','), 
+            s.cost.toFixed(2).replace('.', ','),
             (s.driverFee || 0).toFixed(2).replace('.', ','),
             profit.toFixed(2).replace('.', ','),
             payment,
             status
-        ].join(';'); // Use semicolon separator
+        ].join(';');
     });
 
-    // Add BOM
     const csvContent = "\uFEFF" + [headers.join(';'), ...rows].join('\n');
-
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -368,7 +345,6 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
     const maxPickups = Math.max(...filteredData.map(s => s.pickupAddresses.length), 1);
     const maxDeliveries = Math.max(...filteredData.map(s => s.deliveryAddresses.length), 1);
     
-    // Generate header cells
     const pickupHeaders = Array.from({ length: maxPickups }, (_, i) => `<th>Coleta ${i + 1}</th>`).join('');
     const deliveryHeaders = Array.from({ length: maxDeliveries }, (_, i) => `<th>Entrega ${i + 1}</th>`).join('');
     
@@ -699,7 +675,7 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
                                     <th className="p-3 font-bold">Cliente</th>
                                     <th className="p-3 font-bold">Solicitante</th>
                                     <th className="p-3 font-bold">Valor (R$)</th>
-                                    {/* REVISÃO: Coluna de Status REMOVIDA DAQUI */}
+                                    {/* STATUS SERVICE COLUMN REMOVED */}
                                     <th className="p-3 font-bold text-center">Pagamento</th>
                                     <th className="p-3 font-bold text-center">Status Pagamento</th>
                                     <th className="p-3 font-bold text-center">Doc</th>
@@ -729,7 +705,7 @@ export const Reports: React.FC<ReportsProps> = ({ clients, services, currentUser
                                             <td className="p-3 font-bold text-slate-800 dark:text-white">
                                                 {s.cost.toFixed(2)}
                                             </td>
-                                            {/* REVISÃO: Coluna de Status REMOVIDA DAQUI TAMBÉM */}
+                                            {/* STATUS SERVICE COLUMN REMOVED */}
                                             <td className="p-3 text-center">
                                                 <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300">
                                                     {getPaymentIcon(s.paymentMethod)}
