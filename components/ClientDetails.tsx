@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Client, ServiceRecord, PaymentMethod, User } from '../types';
 import { saveService, updateService, getServicesByClient, bulkUpdateServices, deleteService } from '../services/storageService';
-import { ArrowLeft, Plus, Calendar, MapPin, Filter, FileSpreadsheet, X, ChevronDown, FileText, ShieldCheck, Pencil, CheckCircle, AlertCircle, PieChart, List, CheckSquare, Square, User as UserIcon, Building, MinusSquare, Phone, Mail, Banknote, QrCode, CreditCard, MessageCircle, Loader2, Download, Table, FileDown, Trash2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Plus, Calendar, MapPin, Filter, FileSpreadsheet, X, Bike, ChevronDown, FileText, ShieldCheck, Pencil, DollarSign, CheckCircle, AlertCircle, PieChart, List, CheckSquare, Square, MoreHorizontal, User as UserIcon, Building, MinusSquare, Share2, Phone, Mail, Banknote, QrCode, CreditCard, MessageCircle, Loader2, Download, Table, FileDown, Package, Clock, XCircle, Activity, Trash2, AlertTriangle, FileCheck } from 'lucide-react';
 // @ts-ignore
 import { jsPDF } from 'jspdf';
 // @ts-ignore
@@ -481,7 +481,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         return { totalPaid, totalPending, revenueByMethod };
     }, [filteredServices]);
 
-    // --- FUNÇÃO DE EXPORTAÇÃO DO BOLETO ---
+    // --- FUNÇÃO DE EXPORTAÇÃO DO BOLETO (AJUSTADA) ---
     const handleExportBoleto = () => {
         if (isGeneratingPdf) return;
         setIsGeneratingPdf(true);
@@ -494,7 +494,14 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 const marginX = 10;
                 
                 // Configuração das Linhas
-                let currentY = 10;
+                let currentY = 15;
+
+                // --- TÍTULO PRINCIPAL (NOVO) ---
+                doc.setFontSize(14);
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(0);
+                doc.text("RELATÓRIO DE SERVIÇOS PRESTADOS", pageWidth / 2, currentY, { align: 'center' });
+                currentY += 10;
 
                 // --- 1. CABEÇALHO DIVIDIDO ---
                 const boxHeight = 35;
@@ -510,18 +517,15 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 // Linha do meio
                 doc.line(midPage, currentY, midPage, currentY + boxHeight);
 
-                // LADO ESQUERDO: DADOS DO CLIENTE
-                doc.setFontSize(8);
-                doc.setTextColor(100);
-                doc.setFont(undefined, 'bold');
-                doc.text("DADOS DO CLIENTE (TOMADOR)", marginX, currentY + 5);
-                
+                // LADO ESQUERDO: DADOS DO CLIENTE (SEM TÍTULO "DADOS DO CLIENTE")
                 doc.setTextColor(0);
                 doc.setFontSize(10);
-                doc.text(`Empresa: ${client.name.substring(0, 30)}`, marginX, currentY + 12);
+                doc.setFont(undefined, 'bold');
+                doc.text(`Empresa: ${client.name.substring(0, 30)}`, marginX + 2, currentY + 8);
+                
                 doc.setFontSize(9);
                 doc.setFont(undefined, 'normal');
-                doc.text(`Responsável: ${client.contactPerson || '-'}`, marginX, currentY + 17);
+                doc.text(`Responsável: ${client.contactPerson || '-'}`, marginX + 2, currentY + 14);
                 
                 // Período
                 let periodoTxt = "Todo o histórico";
@@ -530,30 +534,25 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                     const d2 = new Date(endDate + 'T00:00:00').toLocaleDateString();
                     periodoTxt = `${d1} a ${d2}`;
                 }
-                doc.text(`Período: ${periodoTxt}`, marginX, currentY + 22);
-                doc.text(`Data Emissão: ${new Date().toLocaleDateString()}`, marginX, currentY + 27);
+                doc.text(`Período: ${periodoTxt}`, marginX + 2, currentY + 20);
+                doc.text(`Data Emissão: ${new Date().toLocaleDateString()}`, marginX + 2, currentY + 26);
 
-                // LADO DIREITO: DADOS DO PRESTADOR (VOCÊ)
-                const rightX = midPage + 2;
-                doc.setFontSize(8);
-                doc.setTextColor(100);
-                doc.setFont(undefined, 'bold');
-                doc.text("DADOS DO PRESTADOR (EMPRESA)", rightX, currentY + 5);
-
-                doc.setTextColor(0);
+                // LADO DIREITO: DADOS DO PRESTADOR (SEM TÍTULO "DADOS DO PRESTADOR")
+                const rightX = midPage + 4;
                 doc.setFontSize(10);
+                doc.setFont(undefined, 'bold');
                 const myName = currentUser.companyName || currentUser.name || "Sua Empresa";
-                doc.text(`Empresa: ${myName.substring(0, 30)}`, rightX, currentY + 12);
+                doc.text(`Empresa: ${myName.substring(0, 30)}`, rightX, currentY + 8);
                 
                 doc.setFontSize(9);
                 doc.setFont(undefined, 'normal');
                 const myCnpj = currentUser.companyCnpj || "CNPJ Não informado";
-                doc.text(`CNPJ: ${myCnpj}`, rightX, currentY + 17);
+                doc.text(`CNPJ: ${myCnpj}`, rightX, currentY + 14);
                 const myPhone = currentUser.phone || "-";
-                doc.text(`WhatsApp: ${myPhone}`, rightX, currentY + 22);
-                doc.text(`Resp.: ${currentUser.name.split(' ')[0]}`, rightX, currentY + 27);
+                doc.text(`WhatsApp: ${myPhone}`, rightX, currentY + 20);
+                doc.text(`Resp.: ${currentUser.name.split(' ')[0]}`, rightX, currentY + 26);
 
-                currentY += boxHeight + 5;
+                currentY += boxHeight + 10;
 
                 // --- 2. TÍTULO E FATURA ---
                 doc.setFontSize(11);
