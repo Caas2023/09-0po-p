@@ -481,7 +481,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         return { totalPaid, totalPending, revenueByMethod };
     }, [filteredServices]);
 
-    // --- FUNÇÃO DE EXPORTAÇÃO DO BOLETO (AJUSTADA) ---
+    // --- FUNÇÃO DE EXPORTAÇÃO DO BOLETO (ATUALIZADA) ---
     const handleExportBoleto = () => {
         if (isGeneratingPdf) return;
         setIsGeneratingPdf(true);
@@ -504,7 +504,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 currentY += 10;
 
                 // --- 1. CABEÇALHO DIVIDIDO ---
-                const boxHeight = 35;
+                const boxHeight = 25; // Altura reduzida pois removemos títulos internos
                 const midPage = pageWidth / 2;
 
                 // Desenhar borda externa do cabeçalho
@@ -519,13 +519,15 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
 
                 // LADO ESQUERDO: DADOS DO CLIENTE (SEM TÍTULO "DADOS DO CLIENTE")
                 doc.setTextColor(0);
-                doc.setFontSize(10);
+                
+                // Nome do Cliente em Negrito, sem "Empresa:"
+                doc.setFontSize(11);
                 doc.setFont(undefined, 'bold');
-                doc.text(`Empresa: ${client.name.substring(0, 30)}`, marginX + 2, currentY + 8);
+                doc.text(`${client.name.substring(0, 35)}`, marginX + 2, currentY + 6);
                 
                 doc.setFontSize(9);
                 doc.setFont(undefined, 'normal');
-                doc.text(`Responsável: ${client.contactPerson || '-'}`, marginX + 2, currentY + 14);
+                doc.text(`Responsável: ${client.contactPerson || '-'}`, marginX + 2, currentY + 12);
                 
                 // Período
                 let periodoTxt = "Todo o histórico";
@@ -534,23 +536,25 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                     const d2 = new Date(endDate + 'T00:00:00').toLocaleDateString();
                     periodoTxt = `${d1} a ${d2}`;
                 }
-                doc.text(`Período: ${periodoTxt}`, marginX + 2, currentY + 20);
-                doc.text(`Data Emissão: ${new Date().toLocaleDateString()}`, marginX + 2, currentY + 26);
+                doc.text(`Período: ${periodoTxt}`, marginX + 2, currentY + 17);
+                doc.text(`Emissão: ${new Date().toLocaleDateString()}`, marginX + 2, currentY + 22);
 
                 // LADO DIREITO: DADOS DO PRESTADOR (SEM TÍTULO "DADOS DO PRESTADOR")
                 const rightX = midPage + 4;
-                doc.setFontSize(10);
-                doc.setFont(undefined, 'bold');
                 const myName = currentUser.companyName || currentUser.name || "Sua Empresa";
-                doc.text(`Empresa: ${myName.substring(0, 30)}`, rightX, currentY + 8);
+                
+                // Nome do Prestador em Negrito, sem "Empresa:"
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'bold');
+                doc.text(`${myName.substring(0, 35)}`, rightX, currentY + 6);
                 
                 doc.setFontSize(9);
                 doc.setFont(undefined, 'normal');
                 const myCnpj = currentUser.companyCnpj || "CNPJ Não informado";
-                doc.text(`CNPJ: ${myCnpj}`, rightX, currentY + 14);
+                doc.text(`CNPJ: ${myCnpj}`, rightX, currentY + 12);
                 const myPhone = currentUser.phone || "-";
-                doc.text(`WhatsApp: ${myPhone}`, rightX, currentY + 20);
-                doc.text(`Resp.: ${currentUser.name.split(' ')[0]}`, rightX, currentY + 26);
+                doc.text(`WhatsApp: ${myPhone}`, rightX, currentY + 17);
+                doc.text(`Resp.: ${currentUser.name.split(' ')[0]}`, rightX, currentY + 22);
 
                 currentY += boxHeight + 10;
 
@@ -630,40 +634,14 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 doc.setFontSize(12);
                 doc.text(`R$ ${totalValue.toFixed(2)}`, pageWidth - marginX, finalY + 14, { align: 'right' });
 
-                finalY += 25;
+                // --- 5. DADOS PARA PAGAMENTO (REMOVIDO CONFORME SOLICITADO) ---
+                // O código antigo de pagamento foi apagado daqui.
 
-                // --- 5. DADOS PARA PAGAMENTO ---
-                // Caixa de pagamento
-                doc.setFillColor(245, 245, 245);
-                doc.rect(marginX, finalY, pageWidth - (marginX * 2), 35, 'F');
-                doc.setDrawColor(200);
-                doc.rect(marginX, finalY, pageWidth - (marginX * 2), 35, 'S');
-
-                doc.setFontSize(10);
-                doc.setTextColor(0);
-                doc.setFont(undefined, 'bold');
-                doc.text("DADOS PARA PAGAMENTO", marginX + 5, finalY + 7);
-
-                // Calcular vencimento (Ex: Hoje + 3 dias, ou final do mês selecionado)
-                const dueDate = new Date();
-                dueDate.setDate(dueDate.getDate() + 3); // Padrão +3 dias
-                const vencimentoStr = dueDate.toLocaleDateString();
-
-                doc.setFontSize(9);
-                doc.setFont(undefined, 'normal');
-                doc.text(`Vencimento: ${vencimentoStr}`, marginX + 5, finalY + 15);
-
-                // Placeholder para PIX (Usar CNPJ ou Celular do usuário)
-                const chavePix = currentUser.companyCnpj || currentUser.phone || "Solicitar Chave";
-                doc.text(`Forma de Pagamento: PIX`, marginX + 5, finalY + 22);
-                doc.setFont(undefined, 'bold');
-                doc.text(`Chave PIX: ${chavePix}`, marginX + 5, finalY + 28);
-
-                const fileName = `Fatura_${client.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+                const fileName = `Relatorio_${client.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
                 doc.save(fileName);
 
             } catch (error) {
-                console.error("Error generating Boleto PDF", error);
+                console.error("Error generating PDF", error);
                 alert("Erro ao gerar PDF.");
             } finally {
                 setIsGeneratingPdf(false);
