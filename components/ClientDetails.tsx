@@ -458,7 +458,130 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     };
 
     // PDF Exports
-    const handleExportPDF = () => { /* ... (Logic duplicated in Reports for brevity here, or keep as is) */ };
+    const handleExportPDF = () => {
+        if (isGeneratingPdf) return;
+        setIsGeneratingPdf(true);
+        setShowExportMenu(false);
+
+        setTimeout(() => {
+            try {
+                const doc = new jsPDF();
+                const companyName = currentUser.companyName || currentUser.name || "LogiTrack CRM";
+
+                // Header Background
+                doc.setFillColor(30, 41, 59); // Slate 800
+                doc.rect(0, 0, 210, 35, 'F');
+
+                // Title
+                doc.setFontSize(22);
+                doc.setTextColor(255, 255, 255);
+                doc.text("Relatório Financeiro", 14, 18);
+
+                // Subtitle (Company)
+                doc.setFontSize(10);
+                doc.setTextColor(203, 213, 225); // Slate 300
+                doc.text(companyName, 14, 26);
+
+                // Meta Info
+                doc.setFontSize(10);
+                doc.text(`Gerado em: ${new Date().toLocaleDateString()}`, 196, 18, { align: 'right' });
+                doc.text(`Cliente: ${client.name}`, 196, 26, { align: 'right' });
+
+                // -- Summary Cards --
+                const cardY = 45;
+                const cardWidth = 60;
+                const cardHeight = 25;
+                const gap = 10;
+                const startX = 14;
+
+                // Card 1: Total Paid
+                doc.setFillColor(236, 253, 245); // Emerald 50
+                doc.setDrawColor(167, 243, 208); // Emerald 200
+                doc.roundedRect(startX, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+                doc.setFontSize(8);
+                doc.setTextColor(6, 95, 70); // Emerald 800
+                doc.text("Total Pago", startX + 5, cardY + 8);
+                doc.setFontSize(14);
+                doc.text(`R$ ${stats.totalPaid.toFixed(2)}`, startX + 5, cardY + 18);
+
+                // Card 2: Total Pending
+                doc.setFillColor(255, 251, 235); // Amber 50
+                doc.setDrawColor(253, 230, 138); // Amber 200
+                doc.roundedRect(startX + cardWidth + gap, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+                doc.setFontSize(8);
+                doc.setTextColor(146, 64, 14); // Amber 800
+                doc.text("Total Pendente", startX + cardWidth + gap + 5, cardY + 8);
+                doc.setFontSize(14);
+                doc.text(`R$ ${stats.totalPending.toFixed(2)}`, startX + cardWidth + gap + 5, cardY + 18);
+
+                // -- Table --
+                const tableData = filteredServices.map(s => [
+                    new Date(s.date + 'T00:00:00').toLocaleDateString(),
+                    s.pickupAddresses.join('\n') + '\n-> ' + s.deliveryAddresses.join('\n'),
+                    s.requesterName || '-',
+                    getPaymentMethodLabel(s.paymentMethod),
+                    `R$ ${s.cost.toFixed(2)}`,
+                    s.paid ? 'PAGO' : 'PENDENTE'
+                ]);
+
+                autoTable(doc, {
+                    startY: 80,
+                    head: [['Data', 'Rota', 'Solicitante', 'Método', 'Valor', 'Status']],
+                    body: tableData,
+                    theme: 'striped',
+                    headStyles: {
+                        fillColor: [30, 41, 59],
+                        textColor: 255,
+                        fontSize: 9,
+                        fontStyle: 'bold',
+                    },
+                    styles: {
+                        fontSize: 8,
+                        cellPadding: 3,
+                        overflow: 'linebreak',
+                        valign: 'middle'
+                    },
+                    columnStyles: {
+                        0: { cellWidth: 25 },
+                        1: { cellWidth: 'auto' }, // Rota expands
+                        2: { cellWidth: 30 },
+                        3: { cellWidth: 25 },
+                        4: { cellWidth: 25, halign: 'right' },
+                        5: { cellWidth: 25, halign: 'center' }
+                    },
+                    didParseCell: function (data: any) {
+                        if (data.section === 'body' && data.column.index === 5) {
+                            if (data.cell.raw === 'PAGO') {
+                                data.cell.styles.textColor = [22, 163, 74]; // Green
+                                data.cell.styles.fontStyle = 'bold';
+                            } else {
+                                data.cell.styles.textColor = [217, 119, 6]; // Amber
+                                data.cell.styles.fontStyle = 'bold';
+                            }
+                        }
+                    }
+                });
+
+                // Footer
+                const pageCount = doc.getNumberOfPages();
+                for (let i = 1; i <= pageCount; i++) {
+                    doc.setPage(i);
+                    doc.setFontSize(8);
+                    doc.setTextColor(150);
+                    doc.text('LogiTrack CRM - Relatório Financeiro', 14, doc.internal.pageSize.height - 10);
+                    doc.text(`Página ${i} de ${pageCount}`, 196, doc.internal.pageSize.height - 10, { align: 'right' });
+                }
+
+                doc.save(`Extrato_${client.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
+
+            } catch (error) {
+                console.error("Error generating PDF:", error);
+                alert("Erro ao gerar PDF.");
+            } finally {
+                setIsGeneratingPdf(false);
+            }
+        }, 100);
+    };
     const downloadCSV = () => { /* ... */ };
     const exportExcel = (type: 'client' | 'internal') => { /* ... */ };
 
@@ -587,10 +710,44 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
 
             {/* Filter Bar */}
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 overflow-hidden">
-                <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-slate-50 dark:bg-slate-800/50">
+                <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-slate-50 dark:bg-slate-800/50 relative">
                     <h3 className="font-bold text-slate-800 dark:text-white whitespace-nowrap hidden sm:block">
                         {activeTab === 'services' ? 'Histórico de Corridas' : 'Detalhes Financeiros'}
                     </h3>
+
+                    {/* Export Menu for Financial Tab */}
+                    {activeTab === 'financial' && (
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowExportMenu(!showExportMenu)}
+                                className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 transition-colors flex items-center gap-2 font-bold shadow-sm"
+                            >
+                                <FileSpreadsheet size={16} />
+                                Exportar Dados
+                            </button>
+
+                            {showExportMenu && (
+                                <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)}></div>
+                                    <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-20 overflow-hidden animate-fade-in">
+                                        <button
+                                            onClick={handleExportPDF}
+                                            disabled={isGeneratingPdf}
+                                            className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex items-center gap-3 border-b border-slate-100 dark:border-slate-700 transition-colors"
+                                        >
+                                            <div className="p-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg">
+                                                {isGeneratingPdf ? <Loader2 size={18} className="animate-spin" /> : <FileDown size={18} />}
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-slate-800 dark:text-white">Baixar Relatório PDF</p>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400">Extrato financeiro completo</p>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* TAB 2: FINANCIAL (Stats) */}
