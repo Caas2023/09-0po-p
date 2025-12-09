@@ -244,8 +244,8 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     const [serviceDate, setServiceDate] = useState(getLocalDateStr(new Date()));
     const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
     const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
-    const [cost, setCost] = useState('');
-    const [driverFee, setDriverFee] = useState('');
+    const [cost, setCost] = useState(''); // Client Charge
+    const [driverFee, setDriverFee] = useState(''); // Motoboy Pay
     const [requester, setRequester] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
     
@@ -253,19 +253,28 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [statusFilter, setStatusFilter] = useState<'ALL' | 'PAID' | 'PENDING'>('ALL');
+
+    // Selection State
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
     const handleAddAddress = (type: 'pickup' | 'delivery') => {
-        if (type === 'pickup') setPickupAddresses([...pickupAddresses, '']);
-        else setDeliveryAddresses([...deliveryAddresses, '']);
+        if (type === 'pickup') {
+            setPickupAddresses([...pickupAddresses, '']);
+        } else {
+            setDeliveryAddresses([...deliveryAddresses, '']);
+        }
     };
 
     const handleRemoveAddress = (type: 'pickup' | 'delivery', index: number) => {
         if (type === 'pickup') {
-            if (pickupAddresses.length > 1) setPickupAddresses(pickupAddresses.filter((_, i) => i !== index));
+            if (pickupAddresses.length > 1) {
+                setPickupAddresses(pickupAddresses.filter((_, i) => i !== index));
+            }
         } else {
-            if (deliveryAddresses.length > 1) setDeliveryAddresses(deliveryAddresses.filter((_, i) => i !== index));
+            if (deliveryAddresses.length > 1) {
+                setDeliveryAddresses(deliveryAddresses.filter((_, i) => i !== index));
+            }
         }
     };
 
@@ -291,7 +300,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         setRequester(service.requesterName);
         setPaymentMethod(service.paymentMethod || 'PIX');
         setShowForm(true);
-        setActiveTab('services');
+        setActiveTab('services'); // Ensure we are on the form tab
     };
 
     const confirmDeleteService = async () => {
@@ -345,7 +354,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
 
         const serviceData: ServiceRecord = {
             id: editingServiceId || crypto.randomUUID(),
-            ownerId: '',
+            ownerId: '', // Placeholder, handled by storageService
             clientId: client.id,
             pickupAddresses: cleanPickups,
             deliveryAddresses: cleanDeliveries,
@@ -355,6 +364,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
             date: serviceDate,
             paid: originalService ? originalService.paid : false,
             paymentMethod: paymentMethod,
+            // Status field is kept internally if needed but not shown
             status: originalService ? originalService.status : 'PENDING'
         };
 
@@ -393,15 +403,23 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
 
     const getFilteredServices = () => {
         let filtered = services;
+
+        // Date Filter using string comparison for robustness
         if (startDate && endDate) {
             filtered = filtered.filter(s => {
                 const dateStr = s.date.includes('T') ? s.date.split('T')[0] : s.date;
                 return dateStr >= startDate && dateStr <= endDate;
             });
         }
-        if (statusFilter === 'PAID') filtered = filtered.filter(s => s.paid === true);
-        else if (statusFilter === 'PENDING') filtered = filtered.filter(s => s.paid === false);
 
+        // Status Filter
+        if (statusFilter === 'PAID') {
+            filtered = filtered.filter(s => s.paid === true);
+        } else if (statusFilter === 'PENDING') {
+            filtered = filtered.filter(s => s.paid === false);
+        }
+
+        // Sort by date descending
         return filtered.sort((a, b) => {
             const dateA = a.date.includes('T') ? a.date.split('T')[0] : a.date;
             const dateB = b.date.includes('T') ? b.date.split('T')[0] : b.date;
@@ -413,40 +431,76 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
 
     const filteredServices = getFilteredServices();
 
+    // Counts for summary
+    const statusCounts = useMemo(() => {
+        const counts = {
+            TOTAL: filteredServices.length,
+            DONE: 0,
+            IN_PROGRESS: 0,
+            PENDING: 0,
+            CANCELLED: 0
+        };
+        filteredServices.forEach(s => {
+            const st = s.status || 'DONE';
+            if (st === 'DONE') counts.DONE++;
+            else if (st === 'IN_PROGRESS') counts.IN_PROGRESS++;
+            else if (st === 'PENDING') counts.PENDING++;
+            else if (st === 'CANCELLED') counts.CANCELLED++;
+        });
+        return counts;
+    }, [filteredServices]);
+
+    // Clear selection when filters change
+    useEffect(() => {
+        setSelectedIds(new Set());
+    }, [startDate, endDate, statusFilter, services]);
+
+    // Selection Logic
+    const toggleSelectAll = () => {
+        if (selectedIds.size === filteredServices.length && filteredServices.length > 0) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filteredServices.map(s => s.id)));
+        }
+    };
+
+    const toggleSelectRow = (id: string) => {
+        const newSet = new Set(selectedIds);
+        if (newSet.has(id)) {
+            newSet.delete(id);
+        } else {
+            newSet.add(id);
+        }
+        setSelectedIds(newSet);
+    };
+
+    const handleBulkStatusChange = async (newStatus: boolean) => {
+        if (selectedIds.size === 0) return;
+
+        const updates = services
+            .filter(s => selectedIds.has(s.id))
+            .map(s => ({ ...s, paid: newStatus }));
+
+        await bulkUpdateServices(updates);
+        const updatedList = await getServicesByClient(client.id);
+        setServices(updatedList);
+        setSelectedIds(new Set()); // Clear selection after action
+    };
+
     const stats = useMemo(() => {
         const totalPaid = filteredServices.filter(s => s.paid).reduce((sum, s) => sum + s.cost, 0);
         const totalPending = filteredServices.filter(s => !s.paid).reduce((sum, s) => sum + s.cost, 0);
+
         const revenueByMethod = filteredServices.reduce((acc, curr) => {
             const method = curr.paymentMethod || 'PIX';
             acc[method] = (acc[method] || 0) + curr.cost;
             return acc;
         }, { PIX: 0, CASH: 0, CARD: 0 } as Record<string, number>);
+
         return { totalPaid, totalPending, revenueByMethod };
     }, [filteredServices]);
 
-    useEffect(() => { setSelectedIds(new Set()); }, [startDate, endDate, statusFilter, services]);
-
-    const toggleSelectAll = () => {
-        if (selectedIds.size === filteredServices.length && filteredServices.length > 0) setSelectedIds(new Set());
-        else setSelectedIds(new Set(filteredServices.map(s => s.id)));
-    };
-    const toggleSelectRow = (id: string) => {
-        const newSet = new Set(selectedIds);
-        if (newSet.has(id)) newSet.delete(id);
-        else newSet.add(id);
-        setSelectedIds(newSet);
-    };
-    const handleBulkStatusChange = async (newStatus: boolean) => {
-        if (selectedIds.size === 0) return;
-        const updates = services.filter(s => selectedIds.has(s.id)).map(s => ({ ...s, paid: newStatus }));
-        await bulkUpdateServices(updates);
-        const updatedList = await getServicesByClient(client.id);
-        setServices(updatedList);
-        setSelectedIds(new Set());
-    };
-
-    // --- PDF EXPORT FUNCTION CORRIGIDA (SEM STATUS) ---
-    const handleExportPDF = () => {
+    const handleExportPDF = (type: 'client' | 'internal' = 'client') => {
         if (isGeneratingPdf) return;
         setIsGeneratingPdf(true);
         setShowExportMenu(false);
@@ -454,150 +508,223 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         setTimeout(() => {
             try {
                 const doc = new jsPDF('p', 'mm', 'a4');
-                const pageWidth = doc.internal.pageSize.getWidth();
-                const marginX = 10;
-                
-                const totalRevenue = filteredServices.reduce((sum, s) => sum + s.cost, 0);
+                const pageWidth = doc.internal.pageSize.getWidth(); // 210mm
+                const pageHeight = doc.internal.pageSize.getHeight(); // 297mm
+                const marginX = 14;
+                const contentWidth = pageWidth - (marginX * 2);
 
-                // --- HEADER ---
-                doc.setFillColor(0, 51, 102); 
-                doc.rect(0, 0, pageWidth, 28, 'F');
+                const myCompany = {
+                    name: currentUser.companyName || currentUser.name || "LogiTrack CRM",
+                    email: currentUser.email,
+                };
 
-                doc.setFontSize(16);
+                // -- Header --
+                doc.setFillColor(30, 41, 59); // Slate 800
+                doc.rect(0, 0, pageWidth, 40, 'F');
+
+                doc.setFontSize(22);
                 doc.setTextColor(255, 255, 255);
+                doc.text(type === 'internal' ? "Relatório Interno" : "Relatório de Serviços", marginX, 20);
+
+                doc.setFontSize(10);
+                doc.setTextColor(203, 213, 225); // Slate 300
+                doc.text(myCompany.name, marginX, 28);
+                doc.text(`Gerado por: ${currentUser.name}`, marginX, 33);
+
+                // Dates on the right
+                doc.text(`Emissão: ${new Date().toLocaleDateString()}`, pageWidth - marginX, 20, { align: 'right' });
+                if (startDate && endDate) {
+                    const startD = new Date(startDate + 'T00:00:00').toLocaleDateString();
+                    const endD = new Date(endDate + 'T00:00:00').toLocaleDateString();
+                    doc.text(`Período: ${startD} a ${endD}`, pageWidth - marginX, 28, { align: 'right' });
+                } else {
+                    doc.text(`Período: Todo o histórico`, pageWidth - marginX, 28, { align: 'right' });
+                }
+
+                // -- Client Info Section --
+                doc.setTextColor(30, 41, 59);
+                doc.setFontSize(12);
                 doc.setFont(undefined, 'bold');
-                doc.text("RELATÓRIO DE SERVIÇOS OPERACIONAIS", marginX, 12);
-                
+                doc.text(`Cliente: ${client.name}`, marginX, 55);
+
                 doc.setFontSize(9);
                 doc.setFont(undefined, 'normal');
-                doc.text(`LogiTrack CRM | ${client.name}`, marginX, 18);
-
-                // --- INFO SECTION ---
-                doc.setTextColor(0, 0, 0);
-                doc.setFontSize(8);
-                doc.setFont(undefined, 'bold');
-                
-                let currentY = 36;
-                doc.text(`Cliente/Empresa:`, marginX, currentY);
-                doc.setFont(undefined, 'normal');
-                doc.text(client.name, marginX + 25, currentY);
-                currentY += 4;
-
-                doc.setFont(undefined, 'bold');
-                doc.text(`Responsável:`, marginX, currentY);
-                doc.setFont(undefined, 'normal');
-                doc.text(currentUser.name, marginX + 25, currentY);
-                currentY += 4;
-
-                doc.setFont(undefined, 'bold');
-                doc.text(`Período:`, marginX, currentY);
-                doc.setFont(undefined, 'normal');
-                
-                let periodText = "Todo o histórico";
-                if (startDate && endDate) {
-                    periodText = `${new Date(startDate + 'T00:00:00').toLocaleDateString()} a ${new Date(endDate + 'T00:00:00').toLocaleDateString()}`;
+                let clientInfoY = 60;
+                if (client.cnpj) {
+                    doc.text(`CNPJ: ${client.cnpj}`, marginX, clientInfoY);
+                    clientInfoY += 5;
                 }
-                doc.text(periodText, marginX + 25, currentY);
+                if (client.contactPerson) {
+                    doc.text(`Responsável: ${client.contactPerson}`, marginX, clientInfoY);
+                    clientInfoY += 5;
+                }
+                doc.text(`Contato: ${client.phone} | ${client.email}`, marginX, clientInfoY);
 
-                const rightX = pageWidth - marginX;
-                doc.setFont(undefined, 'bold');
-                doc.text(`Data de Emissão: ${new Date().toLocaleDateString()}`, rightX, 36, { align: 'right' });
-                doc.text(`Status do Relatório: Gerado`, rightX, 40, { align: 'right' });
 
-                // --- SUMMARY CARDS ---
+                // -- Summary Cards --
+                const totalRevenue = filteredServices.reduce((sum, s) => sum + s.cost, 0);
+                const totalPending = filteredServices.filter(s => !s.paid).reduce((sum, s) => sum + s.cost, 0);
+                const totalCost = filteredServices.reduce((sum, s) => sum + (s.driverFee || 0), 0);
+                const totalProfit = totalRevenue - totalCost;
+
                 const cardY = 50;
-                const cardWidth = (pageWidth - (marginX * 2) - 10) / 2;
+                const cardHeight = 20;
+                const gap = 3; 
 
-                // Card 1
-                doc.setFillColor(230, 230, 230); 
-                doc.rect(marginX, cardY, cardWidth, 6, 'F');
-                doc.setFillColor(245, 245, 245);
-                doc.rect(marginX, cardY + 6, cardWidth, 12, 'F');
-                doc.setFontSize(8);
-                doc.setFont(undefined, 'bold');
-                doc.text("TOTAL DE SERVIÇOS", marginX + 2, cardY + 4);
-                doc.setFontSize(12);
-                doc.setFont(undefined, 'normal');
-                doc.text(filteredServices.length.toString(), marginX + (cardWidth / 2), cardY + 13, { align: 'center' });
+                let numberOfCards = type === 'internal' ? 4 : 3;
+                let cardWidth = (contentWidth - (gap * (numberOfCards - 1))) / numberOfCards;
+                let startX = pageWidth - marginX - ((cardWidth * numberOfCards) + (gap * (numberOfCards - 1)));
 
-                // Card 2
-                const card2X = marginX + cardWidth + 10;
-                doc.setFillColor(230, 230, 230);
-                doc.rect(card2X, cardY, cardWidth, 6, 'F');
-                doc.setFillColor(245, 245, 245);
-                doc.rect(card2X, cardY + 6, cardWidth, 12, 'F');
-                doc.setFontSize(8);
-                doc.setFont(undefined, 'bold');
-                doc.text("TOTAL FATURADO", card2X + 2, cardY + 4);
-                doc.setFontSize(12);
-                doc.setFont(undefined, 'normal');
-                doc.text(`R$ ${totalRevenue.toFixed(2).replace('.', ',')}`, card2X + (cardWidth / 2), cardY + 13, { align: 'center' });
+                let currentX = startX;
 
-                // --- TABLE ---
+                // Card 1: Total
+                doc.setFillColor(241, 245, 249);
+                doc.setDrawColor(203, 213, 225);
+                doc.roundedRect(currentX, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+                doc.setFontSize(7);
+                doc.setTextColor(100, 116, 139);
+                doc.text("TOTAL SERVIÇOS", currentX + 3, cardY + 6);
+                doc.setFontSize(11);
+                doc.setTextColor(15, 23, 42);
+                doc.text(filteredServices.length.toString(), currentX + 3, cardY + 15);
+
+                // Card 2: Revenue
+                currentX += cardWidth + gap;
+                doc.setFillColor(240, 253, 244); 
+                doc.setDrawColor(187, 247, 208);
+                doc.roundedRect(currentX, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+                doc.setFontSize(7);
+                doc.setTextColor(22, 101, 52);
+                doc.text("TOTAL FATURADO", currentX + 3, cardY + 6);
+                doc.setFontSize(11);
+                doc.text(`R$ ${totalRevenue.toFixed(2)}`, currentX + 3, cardY + 15);
+
+                // Card 3: Pending
+                currentX += cardWidth + gap;
+                doc.setFillColor(255, 251, 235);
+                doc.setDrawColor(253, 230, 138);
+                doc.roundedRect(currentX, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+                doc.setFontSize(7);
+                doc.setTextColor(180, 83, 9);
+                doc.text("A RECEBER", currentX + 3, cardY + 6);
+                doc.setFontSize(11);
+                doc.text(`R$ ${totalPending.toFixed(2)}`, currentX + 3, cardY + 15);
+
+                // Card 4: Profit (Internal Only)
+                if (type === 'internal') {
+                    currentX += cardWidth + gap;
+                    doc.setFillColor(239, 246, 255); 
+                    doc.setDrawColor(191, 219, 254);
+                    doc.roundedRect(currentX, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+                    doc.setFontSize(7);
+                    doc.setTextColor(29, 78, 216);
+                    doc.text("LUCRO LÍQUIDO", currentX + 3, cardY + 6);
+                    doc.setFontSize(11);
+                    doc.text(`R$ ${totalProfit.toFixed(2)}`, currentX + 3, cardY + 15);
+                }
+
+                // -- Table --
+                let head = [['Data', 'Solicitante', 'Rota', 'Valor', 'Pgto']];
+                if (type === 'internal') {
+                    head = [['Data', 'Solicitante', 'Rota', 'Valor', 'Motoboy', 'Lucro', 'Pgto']];
+                }
+
                 const tableData = filteredServices.map(s => {
-                    // Combine route addresses
-                    const route = `R: ${s.pickupAddresses.join(', ')}\nE: ${s.deliveryAddresses.join(', ')}`;
-                    
-                    return [
+                    const commonData = [
                         new Date(s.date + 'T00:00:00').toLocaleDateString(),
                         s.requesterName,
-                        route,
-                        s.paid ? 'PAGO' : 'PEND',
-                        `R$ ${s.cost.toFixed(2).replace('.', ',')}`
                     ];
+
+                    const route = `R: ${s.pickupAddresses[0]}${s.pickupAddresses.length > 1 ? '...' : ''}\nE: ${s.deliveryAddresses[0]}${s.deliveryAddresses.length > 1 ? '...' : ''}`;
+
+                    if (type === 'internal') {
+                        const profit = s.cost - (s.driverFee || 0);
+                        return [
+                            ...commonData,
+                            route,
+                            `R$ ${s.cost.toFixed(2)}`,
+                            `R$ ${(s.driverFee || 0).toFixed(2)}`,
+                            `R$ ${profit.toFixed(2)}`,
+                            s.paid ? 'PAGO' : 'PEND'
+                        ];
+                    } else {
+                        return [
+                            ...commonData,
+                            route,
+                            `R$ ${s.cost.toFixed(2)}`,
+                            s.paid ? 'PAGO' : 'PEND'
+                        ];
+                    }
                 });
 
+                // Column Styles
+                let columnStyles: any = {};
+
+                if (type === 'internal') {
+                    columnStyles = {
+                        0: { cellWidth: 18 },
+                        1: { cellWidth: 22 },
+                        2: { cellWidth: 'auto' },
+                        3: { cellWidth: 20, halign: 'right', fontStyle: 'bold', textColor: [22, 101, 52] },
+                        4: { cellWidth: 18, halign: 'right', textColor: [185, 28, 28] },
+                        5: { cellWidth: 18, halign: 'right', fontStyle: 'bold', textColor: [29, 78, 216] },
+                        6: { cellWidth: 14, halign: 'center' }
+                    };
+                } else {
+                    columnStyles = {
+                        0: { cellWidth: 22 },
+                        1: { cellWidth: 30 },
+                        2: { cellWidth: 'auto' },
+                        3: { cellWidth: 25, halign: 'right', fontStyle: 'bold' },
+                        4: { cellWidth: 20, halign: 'center' }
+                    };
+                }
+
                 autoTable(doc, {
-                    startY: 75,
-                    head: [['DATA', 'SOLICITANTE', 'ROTA (RETIRADA / ENTREGA)', 'PAGAMENTO', 'VALOR']],
+                    startY: 85,
+                    head: head,
                     body: tableData,
-                    theme: 'plain',
-                    styles: { fontSize: 8, cellPadding: 3, overflow: 'linebreak', valign: 'top', textColor: 0 },
-                    headStyles: { fillColor: [0, 51, 102], textColor: 255, fontStyle: 'bold', fontSize: 8, halign: 'left' },
-                    columnStyles: {
-                        0: { cellWidth: 20 }, // Date
-                        1: { cellWidth: 25 }, // Solicitante
-                        2: { cellWidth: 'auto' }, // Rota
-                        3: { cellWidth: 22, fontStyle: 'bold' }, // Pagamento (index 3)
-                        4: { cellWidth: 20, halign: 'right' }  // Valor (index 4)
+                    theme: 'striped',
+                    margin: { left: marginX, right: marginX },
+                    tableWidth: contentWidth,
+                    headStyles: {
+                        fillColor: [30, 41, 59],
+                        textColor: 255,
+                        fontSize: 8,
+                        fontStyle: 'bold',
                     },
-                    didParseCell: function(data: any) {
-                        // Custom styling for Payment Status column (Index 3 now)
-                        if (data.section === 'body' && data.column.index === 3) {
+                    styles: {
+                        fontSize: 7,
+                        cellPadding: 2,
+                        overflow: 'linebreak',
+                        valign: 'middle'
+                    },
+                    columnStyles: columnStyles,
+                    didParseCell: function (data: any) {
+                        const statusColIndex = type === 'internal' ? 6 : 4; 
+                        if (data.section === 'body' && data.column.index === statusColIndex) {
                             if (data.cell.raw === 'PAGO') {
                                 data.cell.styles.textColor = [22, 163, 74];
+                                data.cell.styles.fontStyle = 'bold';
                             } else {
-                                data.cell.styles.textColor = [234, 88, 12];
+                                data.cell.styles.textColor = [217, 119, 6];
+                                data.cell.styles.fontStyle = 'bold';
                             }
-                        }
-                        // Right align value header
-                        if (data.section === 'head' && data.column.index === 4) {
-                            data.cell.styles.halign = 'right';
-                        }
-                    },
-                    didDrawCell: function(data: any) {
-                        if (data.section === 'body' && data.row.index < tableData.length - 1) {
-                             const doc = data.doc;
-                             doc.setDrawColor(230, 230, 230);
-                             doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
                         }
                     }
                 });
 
-                // Footer
                 const pageCount = doc.getNumberOfPages();
                 for (let i = 1; i <= pageCount; i++) {
                     doc.setPage(i);
-                    const footerY = doc.internal.pageSize.getHeight() - 12;
                     doc.setFontSize(8);
                     doc.setTextColor(150);
-                    doc.setFillColor(30, 30, 30);
-                    doc.roundedRect((pageWidth/2) - 15, footerY - 2, 30, 6, 3, 3, 'F');
-                    doc.setTextColor(255);
-                    doc.text(`${i} / ${pageCount}`, pageWidth/2, footerY + 2, { align: 'center' });
+                    doc.text(`${type === 'internal' ? 'Relatório Interno' : 'Relatório'} ${client.name} - LogiTrack CRM`, marginX, pageHeight - 10);
+                    doc.text(`Página ${i} de ${pageCount}`, pageWidth - marginX, pageHeight - 10, { align: 'right' });
                 }
 
-                doc.save(`Relatorio_${client.name.replace(/\s+/g, '_')}.pdf`);
+                const suffix = type === 'internal' ? '_Interno' : '';
+                doc.save(`Relatorio_${client.name.replace(/\s+/g, '_')}${suffix}.pdf`);
 
             } catch (error) {
                 console.error("Error generating PDF", error);
@@ -608,8 +735,168 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         }, 100);
     };
 
-    const exportExcel = (type: 'client' | 'internal') => { /* Implementação existente... */ };
-    const downloadCSV = () => { /* Implementação existente... */ };
+    const downloadCSV = () => {
+        setShowExportMenu(false);
+        const maxPickups = Math.max(...filteredServices.map(s => s.pickupAddresses.length), 1);
+        const maxDeliveries = Math.max(...filteredServices.map(s => s.deliveryAddresses.length), 1);
+
+        const pickupHeaders = Array.from({ length: maxPickups }, (_, i) => `Coleta ${i + 1}`);
+        const deliveryHeaders = Array.from({ length: maxDeliveries }, (_, i) => `Entrega ${i + 1}`);
+
+        // Removed Status
+        const headers = ['Data', 'Solicitante', ...pickupHeaders, ...deliveryHeaders, 'Valor (R$)', 'Método', 'Pagamento'];
+        
+        const rows = filteredServices.map(s => {
+            const safeString = (str: string) => `"${str.replace(/"/g, '""')}"`;
+            const pickupCols = Array.from({ length: maxPickups }, (_, i) => safeString(s.pickupAddresses[i] || ''));
+            const deliveryCols = Array.from({ length: maxDeliveries }, (_, i) => safeString(s.deliveryAddresses[i] || ''));
+
+            return [
+                new Date(s.date + 'T00:00:00').toLocaleDateString(),
+                safeString(s.requesterName),
+                ...pickupCols,
+                ...deliveryCols,
+                s.cost.toFixed(2).replace('.', ','),
+                getPaymentMethodLabel(s.paymentMethod),
+                s.paid ? 'PAGO' : 'PENDENTE'
+            ].join(';');
+        });
+
+        const csvContent = "\uFEFF" + [headers.join(';'), ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `Relatorio_${client.name.replace(/\s+/g, '_')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const exportExcel = (type: 'client' | 'internal') => {
+        setShowExportMenu(false);
+        const isInternal = type === 'internal';
+
+        const totalRevenue = filteredServices.reduce((sum, s) => sum + s.cost, 0);
+        const totalDriver = filteredServices.reduce((sum, s) => sum + (s.driverFee || 0), 0);
+        const totalProfit = totalRevenue - totalDriver;
+
+        const maxPickups = Math.max(...filteredServices.map(s => s.pickupAddresses.length), 1);
+        const maxDeliveries = Math.max(...filteredServices.map(s => s.deliveryAddresses.length), 1);
+
+        const pickupHeaders = Array.from({ length: maxPickups }, (_, i) => `<th>Coleta ${i + 1}</th>`).join('');
+        const deliveryHeaders = Array.from({ length: maxDeliveries }, (_, i) => `<th>Entrega ${i + 1}</th>`).join('');
+
+        const htmlContent = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body { font-family: Arial, sans-serif; }
+          table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+          th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; vertical-align: top; }
+          th { background-color: #f1f5f9; font-weight: bold; color: #0f172a; }
+          .header { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+          .subheader { color: #475569; margin-bottom: 20px; font-size: 14px; }
+          .money { text-align: right; white-space: nowrap; }
+          .section-title { font-size: 14px; font-weight: bold; margin-top: 20px; margin-bottom: 10px; background-color: #e2e8f0; padding: 5px; }
+          .status-paid { color: #16a34a; font-weight: bold; }
+          .status-pending { color: #d97706; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="header">Relatório ${isInternal ? 'Interno' : 'de Serviços'}: ${client.name}</div>
+        ${client.cnpj ? `<div class="subheader">CNPJ: ${client.cnpj}</div>` : ''}
+        ${client.contactPerson ? `<div class="subheader">Contato: ${client.contactPerson}</div>` : ''}
+        <div class="subheader">Gerado em: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</div>
+        ${startDate && endDate ? `<div class="subheader">Período: ${new Date(startDate + 'T00:00:00').toLocaleDateString()} a ${new Date(endDate + 'T00:00:00').toLocaleDateString()}</div>` : ''}
+
+        <div class="section-title">RESUMO GERAL</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Total de Corridas</th>
+              <th class="money">Faturamento Total</th>
+              ${isInternal ? `
+              <th class="money">Custo Motoboy</th>
+              <th class="money">Lucro Líquido</th>
+              ` : ''}
+              <th>Pago</th>
+              <th>A Receber</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>${filteredServices.length}</td>
+              <td class="money">R$ ${totalRevenue.toFixed(2)}</td>
+              ${isInternal ? `
+              <td class="money">R$ ${totalDriver.toFixed(2)}</td>
+              <td class="money" style="color: ${totalProfit >= 0 ? '#16a34a' : '#dc2626'}">R$ ${totalProfit.toFixed(2)}</td>
+              ` : ''}
+              <td class="money status-paid">R$ ${stats.totalPaid.toFixed(2)}</td>
+              <td class="money status-pending">R$ ${stats.totalPending.toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="section-title">DETALHAMENTO DE SERVIÇOS</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Solicitante</th>
+              ${pickupHeaders}
+              ${deliveryHeaders}
+              <th class="money">Valor Cobrado</th>
+              <th>Método</th>
+              <th>Status Pagamento</th>
+              ${isInternal ? `
+              <th class="money">Pago Motoboy</th>
+              <th class="money">Lucro</th>
+              ` : ''}
+            </tr>
+          </thead>
+          <tbody>
+            ${filteredServices.map(s => {
+            const profit = s.cost - (s.driverFee || 0);
+            const paymentLabel = getPaymentMethodLabel(s.paymentMethod);
+            const pickupCells = Array.from({ length: maxPickups }, (_, i) => `<td>${s.pickupAddresses[i] || ''}</td>`).join('');
+            const deliveryCells = Array.from({ length: maxDeliveries }, (_, i) => `<td>${s.deliveryAddresses[i] || ''}</td>`).join('');
+
+            return `
+                <tr>
+                  <td>${new Date(s.date + 'T00:00:00').toLocaleDateString()}</td>
+                  <td>${s.requesterName}</td>
+                  ${pickupCells}
+                  ${deliveryCells}
+                  <td class="money">R$ ${s.cost.toFixed(2)}</td>
+                  <td>${paymentLabel}</td>
+                  <td class="${s.paid ? 'status-paid' : 'status-pending'}">${s.paid ? 'PAGO' : 'PENDENTE'}</td>
+                  ${isInternal ? `
+                  <td class="money">R$ ${(s.driverFee || 0).toFixed(2)}</td>
+                  <td class="money" style="color: ${profit >= 0 ? '#16a34a' : '#dc2626'}">R$ ${profit.toFixed(2)}</td>
+                  ` : ''}
+                </tr>
+              `;
+        }).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+        const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        const fileName = isInternal
+            ? `Relatorio_Interno_${client.name.replace(/\s+/g, '_')}.xls`
+            : `Relatorio_Cliente_${client.name.replace(/\s+/g, '_')}.xls`;
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     const isAllSelected = filteredServices.length > 0 && selectedIds.size === filteredServices.length;
     const isSomeSelected = selectedIds.size > 0 && selectedIds.size < filteredServices.length;
@@ -617,8 +904,682 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     return (
         <div className="space-y-6 animate-fade-in relative">
 
-            {/* --- MODAL DE EXCLUSÃO --- */}
+            {/* --- MODAL DE EXCLUSÃO DE SERVIÇO --- */}
             {serviceToDelete && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
                     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-700 animate-slide-up">
                         <div className="p-6 text-center">
+                            <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <AlertTriangle size={32} className="text-red-600 dark:text-red-500" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Excluir Serviço?</h3>
+                            <p className="text-slate-600 dark:text-slate-400 mb-6">
+                                Tem certeza que deseja remover este serviço?
+                                <br />Esta ação não poderá ser desfeita.
+                            </p>
+
+                            <div className="flex gap-3 justify-center">
+                                <button
+                                    onClick={() => setServiceToDelete(null)}
+                                    className="px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                    disabled={isDeleting}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={confirmDeleteService}
+                                    className="px-5 py-2.5 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition-colors shadow-sm flex items-center gap-2"
+                                    disabled={isDeleting}
+                                >
+                                    {isDeleting ? 'Excluindo...' : 'Sim, Excluir'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Document Viewer Modal */}
+            {viewingService && (
+                <ServiceDocumentModal
+                    service={viewingService}
+                    client={client}
+                    currentUser={currentUser}
+                    onClose={() => setViewingService(null)}
+                />
+            )}
+
+            {/* Header Area */}
+            <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                    <button onClick={onBack} className="flex items-center text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors font-medium">
+                        <ArrowLeft size={20} className="mr-1" /> Voltar
+                    </button>
+                </div>
+
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700">
+                    <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
+                                {client.name}
+                                <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-md border border-slate-300 dark:border-slate-600">
+                                    {client.category}
+                                </span>
+                            </h1>
+                            {client.cnpj && (
+                                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1 flex items-center gap-2">
+                                    <Building size={14} />
+                                    CNPJ: {client.cnpj}
+                                </p>
+                            )}
+
+                            <div className="flex flex-col gap-2 mt-4 text-slate-600 dark:text-slate-300 text-sm font-medium">
+                                <div className="flex flex-wrap gap-4 md:gap-6">
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                        {client.email}
+                                    </span>
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                        {client.phone}
+                                    </span>
+                                </div>
+                                {(client.address || client.contactPerson) && (
+                                    <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-700 flex flex-col gap-2">
+                                        {client.contactPerson && (
+                                            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                                                <UserIcon size={14} className="text-blue-500" />
+                                                <span className="font-bold">Responsável:</span> {client.contactPerson}
+                                            </div>
+                                        )}
+                                        {client.address && (
+                                            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                                                <MapPin size={14} className="text-emerald-500" />
+                                                <span className="font-bold">Endereço:</span> {client.address}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Tabs */}
+                    <div className="flex gap-6 mt-6 border-b border-slate-200 dark:border-slate-700">
+                        <button
+                            onClick={() => setActiveTab('services')}
+                            className={`pb-3 text-sm font-bold transition-all ${activeTab === 'services'
+                                ? 'text-blue-700 dark:text-blue-400 border-b-2 border-blue-700 dark:border-blue-400'
+                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                                }`}
+                        >
+                            <div className="flex items-center gap-2">
+                                <List size={16} />
+                                Serviços & Cadastro
+                            </div>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('financial')}
+                            className={`pb-3 text-sm font-bold transition-all ${activeTab === 'financial'
+                                ? 'text-emerald-700 dark:text-emerald-400 border-b-2 border-emerald-700 dark:border-emerald-400'
+                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                                }`}
+                        >
+                            <div className="flex items-center gap-2">
+                                <PieChart size={16} />
+                                Relatório Financeiro
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* TAB 1: SERVICES (Form + Simple List) */}
+            {activeTab === 'services' && (
+                <>
+                    <div className="flex justify-end">
+                        <button
+                            onClick={() => {
+                                if (showForm) resetForm();
+                                else setShowForm(true);
+                            }}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-bold shadow-sm"
+                        >
+                            {showForm ? <X size={18} /> : <Plus size={18} />}
+                            {showForm ? 'Cancelar' : 'Nova Corrida'}
+                        </button>
+                    </div>
+
+                    {showForm && (
+                        <form onSubmit={handleSaveService} className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 space-y-6 animate-slide-down">
+                            <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-4">
+                                <h3 className="font-bold text-slate-800 dark:text-white text-lg">
+                                    {editingServiceId ? 'Editar Corrida' : 'Registrar Nova Corrida'}
+                                </h3>
+                                <div className="flex flex-col items-end">
+                                    <label className="text-xs text-slate-600 dark:text-slate-300 font-bold mb-1">Data do Serviço</label>
+                                    <input
+                                        required
+                                        type="date"
+                                        className="p-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium"
+                                        value={serviceDate}
+                                        onChange={e => setServiceDate(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Pickup Addresses */}
+                                <div className="space-y-3">
+                                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">Endereço(s) de Coleta</label>
+                                    {pickupAddresses.map((addr, idx) => (
+                                        <div key={`pickup-${idx}`} className="flex gap-2">
+                                            <div className="relative flex-1">
+                                                <div className="absolute left-3 top-2.5 text-blue-600">
+                                                    <MapPin size={16} />
+                                                </div>
+                                                <input
+                                                    required
+                                                    className="w-full pl-9 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium placeholder-slate-400"
+                                                    value={addr}
+                                                    onChange={e => handleAddressChange('pickup', idx, e.target.value)}
+                                                    placeholder="Endereço de coleta"
+                                                />
+                                            </div>
+                                            {pickupAddresses.length > 1 && (
+                                                <button type="button" onClick={() => handleRemoveAddress('pickup', idx)} className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg">
+                                                    <X size={18} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={() => handleAddAddress('pickup')} className="text-sm text-blue-700 dark:text-blue-400 font-bold hover:underline flex items-center gap-1">
+                                        <Plus size={14} /> Adicionar Coleta Extra
+                                    </button>
+                                </div>
+
+                                {/* Delivery Addresses */}
+                                <div className="space-y-3">
+                                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">Endereço(s) de Entrega</label>
+                                    {deliveryAddresses.map((addr, idx) => (
+                                        <div key={`delivery-${idx}`} className="flex gap-2">
+                                            <div className="relative flex-1">
+                                                <div className="absolute left-3 top-2.5 text-emerald-600">
+                                                    <MapPin size={16} />
+                                                </div>
+                                                <input
+                                                    required
+                                                    className="w-full pl-9 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium placeholder-slate-400"
+                                                    value={addr}
+                                                    onChange={e => handleAddressChange('delivery', idx, e.target.value)}
+                                                    placeholder="Endereço de entrega"
+                                                />
+                                            </div>
+                                            {deliveryAddresses.length > 1 && (
+                                                <button type="button" onClick={() => handleRemoveAddress('delivery', idx)} className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg">
+                                                    <X size={18} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={() => handleAddAddress('delivery')} className="text-sm text-emerald-700 dark:text-emerald-400 font-bold hover:underline flex items-center gap-1">
+                                        <Plus size={14} /> Adicionar Entrega Extra
+                                    </button>
+                                </div>
+
+                                {/* Financials */}
+                                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                                    <div>
+                                        <label className="block text-sm font-bold text-emerald-700 dark:text-emerald-400 mb-1">Valor Cobrado (R$)</label>
+                                        <input required type="number" min="0" step="0.01" className="w-full p-2 border border-emerald-300 dark:border-emerald-600 rounded-lg focus:ring-emerald-500 outline-none font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 placeholder-slate-400" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-red-700 dark:text-red-400 mb-1">Pago ao Motoboy (R$)</label>
+                                        <input required type="number" min="0" step="0.01" className="w-full p-2 border border-red-300 dark:border-red-600 rounded-lg focus:ring-red-500 outline-none font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 placeholder-slate-400" value={driverFee} onChange={e => setDriverFee(e.target.value)} placeholder="0.00" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Solicitado Por</label>
+                                        <input required className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium placeholder-slate-400" value={requester} onChange={e => setRequester(e.target.value)} placeholder="Nome do funcionário" />
+                                    </div>
+                                </div>
+
+                                <div className="md:col-span-2 pt-4 border-t border-slate-200 dark:border-slate-700 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* STATUS REMOVED */}
+
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Método de Pagamento</label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {(['PIX', 'CASH', 'CARD'] as PaymentMethod[]).map(method => (
+                                                <button
+                                                    key={method}
+                                                    type="button"
+                                                    onClick={() => setPaymentMethod(method)}
+                                                    className={`flex items-center justify-center px-4 py-2 rounded-lg border text-sm font-bold transition-all ${paymentMethod === method
+                                                        ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-600 text-blue-800 dark:text-blue-400'
+                                                        : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-600'
+                                                        }`}
+                                                >
+                                                    {getPaymentMethodLabel(method)}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                            <div className="flex justify-end pt-4 gap-3">
+                                <button type="button" onClick={resetForm} className="text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white px-4 py-2.5 font-bold transition-colors">Cancelar</button>
+                                <button type="submit" className="bg-emerald-600 text-white px-8 py-2.5 rounded-lg hover:bg-emerald-700 font-bold shadow-sm hover:shadow-md transition-all">
+                                    {editingServiceId ? 'Atualizar Registro' : 'Salvar Registro'}
+                                </button>
+                            </div>
+                        </form>
+                    )}
+                </>
+            )}
+
+            {/* Filter Bar (Shared) */}
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 overflow-hidden">
+                <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-slate-50 dark:bg-slate-800/50">
+                    <h3 className="font-bold text-slate-800 dark:text-white whitespace-nowrap hidden sm:block">
+                        {activeTab === 'services' ? 'Histórico de Corridas' : 'Detalhes Financeiros'}
+                    </h3>
+
+                    {selectedIds.size > 0 ? (
+                        <div className="flex items-center gap-3 w-full lg:w-auto animate-fade-in bg-blue-50 dark:bg-blue-900/20 p-2 rounded-lg border border-blue-200 dark:border-blue-800/50">
+                            <span className="text-sm font-bold text-blue-700 dark:text-blue-400 whitespace-nowrap px-2">{selectedIds.size} selecionado(s)</span>
+                            <div className="h-6 w-px bg-blue-200 dark:bg-blue-800/50"></div>
+                            <button
+                                onClick={() => handleBulkStatusChange(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-md transition-colors shadow-sm"
+                            >
+                                <CheckCircle size={14} />
+                                Marcar PAGO
+                            </button>
+                            <button
+                                onClick={() => handleBulkStatusChange(false)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-md transition-colors shadow-sm"
+                            >
+                                <AlertCircle size={14} />
+                                Marcar PENDENTE
+                            </button>
+                            <button onClick={() => setSelectedIds(new Set())} className="p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-md text-blue-600 dark:text-blue-400">
+                                <X size={16} />
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col sm:flex-row w-full lg:w-auto gap-3 items-center text-sm flex-wrap">
+                            {/* Status Filter Buttons */}
+                            <div className="flex bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg overflow-hidden p-1 gap-1 w-full sm:w-auto">
+                                <button
+                                    onClick={() => setStatusFilter('ALL')}
+                                    className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-bold transition-all ${statusFilter === 'ALL' ? 'bg-slate-100 dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-600'}`}
+                                >
+                                    Todos
+                                </button>
+                                <button
+                                    onClick={() => setStatusFilter('PAID')}
+                                    className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-bold transition-all ${statusFilter === 'PAID' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-600'}`}
+                                >
+                                    Pagos
+                                </button>
+                                <button
+                                    onClick={() => setStatusFilter('PENDING')}
+                                    className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-bold transition-all ${statusFilter === 'PENDING' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-600'}`}
+                                >
+                                    Pendentes
+                                </button>
+                            </div>
+
+                            {/* Date Filter */}
+                            <div className="flex gap-1 w-full sm:w-auto">
+                                <button onClick={() => setDateRange('today')} className="flex-1 sm:flex-none px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors">Hoje</button>
+                                <button onClick={() => setDateRange('week')} className="flex-1 sm:flex-none px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors">Semana</button>
+                                <button onClick={() => setDateRange('month')} className="flex-1 sm:flex-none px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors">Mês</button>
+                            </div>
+                            <div className="flex items-center gap-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 w-full sm:w-auto">
+                                <Filter size={14} className="text-slate-500 dark:text-slate-400 shrink-0" />
+                                <input
+                                    type="date"
+                                    className="outline-none text-slate-700 dark:text-slate-200 font-medium bg-white dark:bg-slate-700 w-full sm:w-auto text-xs sm:text-sm"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                />
+                                <span className="text-slate-400 font-bold">-</span>
+                                <input
+                                    type="date"
+                                    className="outline-none text-slate-700 dark:text-slate-200 font-medium bg-white dark:bg-slate-700 w-full sm:w-auto text-xs sm:text-sm"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                />
+                            </div>
+
+                            {/* Quick PDF Button */}
+                            <button
+                                onClick={() => handleExportPDF('client')}
+                                disabled={isGeneratingPdf}
+                                className="w-full sm:w-auto text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-lg font-bold transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                                title="Baixar Relatório em PDF"
+                            >
+                                {isGeneratingPdf ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
+                                PDF
+                            </button>
+
+                            {/* Export Button (Available in both tabs) */}
+                            <div className="relative w-full sm:w-auto">
+                                <button
+                                    onClick={() => setShowExportMenu(!showExportMenu)}
+                                    className="w-full sm:w-auto text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 px-3 py-1.5 rounded-lg font-bold transition-colors flex items-center justify-center gap-1 border border-emerald-300 dark:border-emerald-700 whitespace-nowrap"
+                                >
+                                    <FileSpreadsheet size={16} />
+                                    Exportar
+                                    <ChevronDown size={14} className={`transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+                                </button>
+                                {showExportMenu && (
+                                    <>
+                                        <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)}></div>
+                                        <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-20 overflow-hidden animate-fade-in">
+                                            <button
+                                                onClick={() => handleExportPDF('client')}
+                                                disabled={isGeneratingPdf}
+                                                className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex items-center gap-3 border-b border-slate-100 dark:border-slate-700"
+                                            >
+                                                <div className="p-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg">
+                                                    {isGeneratingPdf ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-slate-800 dark:text-white">Baixar Relatório PDF</p>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400">Formato profissional para impressão</p>
+                                                </div>
+                                            </button>
+                                            <button
+                                                onClick={downloadCSV}
+                                                className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex items-center gap-3 border-b border-slate-100 dark:border-slate-700"
+                                            >
+                                                <div className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-lg">
+                                                    <Table size={16} />
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-slate-800 dark:text-white">Baixar Planilha CSV</p>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400">Compatível com Excel e Google Sheets</p>
+                                                </div>
+                                            </button>
+                                            <button
+                                                onClick={() => exportExcel('client')}
+                                                className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex items-center gap-3 border-b border-slate-100 dark:border-slate-700"
+                                            >
+                                                <div className="p-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+                                                    <FileText size={16} />
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-slate-800 dark:text-white">Para o Cliente (.xls)</p>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Sem custos internos</p>
+                                                </div>
+                                            </button>
+                                            <button
+                                                onClick={() => exportExcel('internal')}
+                                                className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex items-center gap-3 border-b border-slate-100 dark:border-slate-700"
+                                            >
+                                                <div className="p-1.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                                                    <ShieldCheck size={16} />
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-slate-800 dark:text-white">Interno (.xls)</p>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Completa com lucros</p>
+                                                </div>
+                                            </button>
+
+                                            {/* NEW: Internal PDF Button */}
+                                            <button
+                                                onClick={() => handleExportPDF('internal')}
+                                                disabled={isGeneratingPdf}
+                                                className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex items-center gap-3"
+                                            >
+                                                <div className="p-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-lg">
+                                                    {isGeneratingPdf ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-slate-800 dark:text-white">Relatório Interno (PDF)</p>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400">Inclui custos e lucros</p>
+                                                </div>
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* TAB 2: FINANCIAL DASHBOARD CONTENT (Only visible in 'financial' tab) */}
+                {activeTab === 'financial' && (
+                    <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 space-y-6">
+                        {/* Main Stats */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 border-l-4 border-l-emerald-500">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase">Valor Recebido (Pago)</p>
+                                        <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">R$ {stats.totalPaid.toFixed(2)}</p>
+                                    </div>
+                                    <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-full">
+                                        <CheckCircle size={24} />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 border-l-4 border-l-amber-500">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase">Valor a Receber (Pendente)</p>
+                                        <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">R$ {stats.totalPending.toFixed(2)}</p>
+                                    </div>
+                                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-full">
+                                        <AlertCircle size={24} />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Payment Method Breakdown */}
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700">
+                            <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase mb-4">Entradas por Método</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-100 dark:border-emerald-800/50">
+                                    <div className="flex items-center gap-2">
+                                        <Banknote size={18} className="text-emerald-600 dark:text-emerald-400" />
+                                        <span className="text-slate-700 dark:text-slate-300 font-bold">Dinheiro</span>
+                                    </div>
+                                    <span className="font-bold text-emerald-700 dark:text-emerald-400">R$ {stats.revenueByMethod['CASH'].toFixed(2)}</span>
+                                </div>
+                                <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800/50">
+                                    <div className="flex items-center gap-2">
+                                        <QrCode size={18} className="text-blue-600 dark:text-blue-400" />
+                                        <span className="text-slate-700 dark:text-slate-300 font-bold">Pix</span>
+                                    </div>
+                                    <span className="font-bold text-blue-700 dark:text-blue-400">R$ {stats.revenueByMethod['PIX'].toFixed(2)}</span>
+                                </div>
+                                <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-100 dark:border-purple-800/50">
+                                    <div className="flex items-center gap-2">
+                                        <CreditCard size={18} className="text-purple-600 dark:text-purple-400" />
+                                        <span className="text-slate-700 dark:text-slate-300 font-bold">Cartão</span>
+                                    </div>
+                                    <span className="font-bold text-purple-700 dark:text-purple-400">R$ {stats.revenueByMethod['CARD'].toFixed(2)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* DATA TABLE (Shared but with different columns based on tab) */}
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                            <tr>
+                                {/* Checkbox Header */}
+                                <th className="p-4 w-12">
+                                    <button
+                                        onClick={toggleSelectAll}
+                                        className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                        disabled={filteredServices.length === 0}
+                                    >
+                                        {isAllSelected ? <CheckSquare size={20} className="text-blue-600 dark:text-blue-400" /> :
+                                            isSomeSelected ? <MinusSquare size={20} className="text-blue-600 dark:text-blue-400" /> :
+                                                <Square size={20} />}
+                                    </button>
+                                </th>
+                                <th className="p-4 font-bold text-slate-800 dark:text-white">Data</th>
+                                <th className="p-4 font-bold text-slate-800 dark:text-white">Rota</th>
+                                <th className="p-4 font-bold text-slate-800 dark:text-white">Solicitante</th>
+                                <th className="p-4 font-bold text-slate-800 dark:text-white text-right">Cobrado</th>
+
+                                {/* Conditional Columns */}
+                                {activeTab === 'services' && (
+                                    <>
+                                        <th className="p-4 font-bold text-slate-800 dark:text-white text-right">Motoboy</th>
+                                        <th className="p-4 font-bold text-slate-800 dark:text-white text-right">Lucro</th>
+                                    </>
+                                )}
+
+                                {/* Financial Tab Columns */}
+                                <th className="p-4 font-bold text-slate-800 dark:text-white text-center">Método</th>
+                                <th className="p-4 font-bold text-slate-800 dark:text-white text-center">Pagamento</th>
+
+                                <th className="p-4 text-center w-24 font-bold text-slate-800 dark:text-white">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            {filteredServices.length === 0 ? (
+                                <tr>
+                                    <td colSpan={11} className="p-8 text-center text-slate-500 dark:text-slate-400 font-medium">
+                                        {startDate ? 'Nenhuma corrida encontrada no período selecionado.' : 'Nenhuma corrida registrada.'}
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredServices.map(service => {
+                                    const profit = service.cost - (service.driverFee || 0);
+                                    const isSelected = selectedIds.has(service.id);
+
+                                    return (
+                                        <tr
+                                            key={service.id}
+                                            className={`hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group ${isSelected ? 'bg-blue-50/70 dark:bg-blue-900/10' : ''} cursor-pointer`}
+                                            onClick={(e) => {
+                                                // If clicking a button or input, don't trigger document view
+                                                if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('input')) return;
+                                                setViewingService(service);
+                                            }}
+                                        >
+                                            <td className="p-4 align-top">
+                                                <button onClick={(e) => { e.stopPropagation(); toggleSelectRow(service.id); }} className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400">
+                                                    {isSelected ? <CheckSquare size={20} className="text-blue-600 dark:text-blue-400" /> : <Square size={20} />}
+                                                </button>
+                                            </td>
+                                            <td className="p-4 text-slate-700 dark:text-slate-300 whitespace-nowrap align-top font-medium">
+                                                <div className="flex items-center gap-2">
+                                                    <Calendar size={16} className="text-slate-400" />
+                                                    {new Date(service.date + 'T00:00:00').toLocaleDateString()}
+                                                </div>
+                                            </td>
+                                            <td className="p-4 max-w-xs align-top">
+                                                <div className="flex flex-col gap-2">
+                                                    {service.pickupAddresses.map((addr, i) => (
+                                                        <div key={i} className="flex items-start gap-2 text-slate-800 dark:text-white font-medium">
+                                                            <div className="mt-1 w-2 h-2 rounded-full bg-blue-500 shrink-0"></div>
+                                                            <span className="text-xs">{addr}</span>
+                                                        </div>
+                                                    ))}
+                                                    {service.deliveryAddresses.map((addr, i) => (
+                                                        <div key={i} className="flex items-start gap-2 text-slate-800 dark:text-white font-medium">
+                                                            <div className="mt-1 w-2 h-2 rounded-full bg-emerald-500 shrink-0"></div>
+                                                            <span className="text-xs">{addr}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </td>
+                                            <td className="p-4 text-slate-700 dark:text-slate-300 align-top font-medium">
+                                                {service.requesterName}
+                                            </td>
+                                            <td className="p-4 text-right font-bold text-emerald-700 dark:text-emerald-400 align-top">
+                                                R$ {service.cost.toFixed(2)}
+                                            </td>
+
+                                            {activeTab === 'services' && (
+                                                <>
+                                                    <td className="p-4 text-right font-bold text-red-600 dark:text-red-400 align-top">
+                                                        R$ {service.driverFee?.toFixed(2) || '0.00'}
+                                                    </td>
+                                                    <td className={`p-4 text-right font-bold align-top ${profit >= 0 ? 'text-blue-700 dark:text-blue-400' : 'text-red-700 dark:text-red-400'}`}>
+                                                        R$ {profit.toFixed(2)}
+                                                    </td>
+                                                </>
+                                            )}
+
+                                            {/* Payment Method Column */}
+                                            <td className="p-4 align-top text-center">
+                                                <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300">
+                                                    {getPaymentIcon(service.paymentMethod)}
+                                                    {getPaymentMethodLabel(service.paymentMethod)}
+                                                </div>
+                                            </td>
+
+                                            {/* Payment Status Column - Interactive */}
+                                            <td className="p-4 align-top text-center">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleTogglePayment(service); }}
+                                                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all shadow-sm ${service.paid
+                                                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800/50'
+                                                        : 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-800/50'
+                                                        }`}
+                                                    title={service.paid ? "Marcar como Pendente" : "Marcar como Pago"}
+                                                >
+                                                    {service.paid ? (
+                                                        <>
+                                                            <CheckCircle size={14} />
+                                                            PAGO
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <AlertCircle size={14} />
+                                                            PENDENTE
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </td>
+
+                                            <td className="p-4 align-top">
+                                                <div className="flex gap-1">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setViewingService(service); }}
+                                                        className="text-slate-500 dark:text-slate-400 hover:text-blue-700 dark:hover:text-blue-400 p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                                                        title="Visualizar Documento"
+                                                    >
+                                                        <FileText size={18} />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleEditService(service); }}
+                                                        className="text-slate-500 dark:text-slate-400 hover:text-blue-700 dark:hover:text-blue-400 p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                                                        title="Editar Corrida"
+                                                    >
+                                                        <Pencil size={18} />
+                                                    </button>
+                                                    {/* --- BOTÃO DE EXCLUIR SERVIÇO --- */}
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setServiceToDelete(service); }}
+                                                        className="text-slate-500 dark:text-slate-400 hover:text-red-700 dark:hover:text-red-400 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                                        title="Excluir Corrida"
+                                                    >
+                                                        <Trash2 size={18} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
