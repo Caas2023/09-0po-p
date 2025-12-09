@@ -129,7 +129,7 @@ function App() {
         onCancel={() => navigate('/')}
         // Passamos o ID do usuário atual aqui.
         // O '!' diz ao TypeScript que temos certeza que currentUser existe (pois já passamos pelo check de login)
-        currentUserId={currentUser!.id} 
+        currentUserId={currentUser!.id}
       />
     );
   };
@@ -190,7 +190,7 @@ function App() {
             <Route path="/clients/:id" element={<ClientDetailsWrapper />} />
             <Route path="/orders/new" element={<NewOrderWrapper />} />
             <Route path="/expenses" element={<Expenses />} />
-            <Route path="/reports" element={<Reports clients={clients} services={services} currentUser={currentUser} />} />
+            <Route path="/reports" element={<Reports clients={clients} services={services} currentUser={currentUser} onRefresh={refreshData} />} />
             <Route path="/settings" element={<Settings currentUser={currentUser} onUpdateUser={setCurrentUser} />} />
 
             <Route path="/admin" element={

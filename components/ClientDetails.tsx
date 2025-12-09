@@ -72,9 +72,9 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
         if (!invoiceRef.current) return null;
 
         const canvas = await html2canvas(invoiceRef.current, {
-            scale: 2, 
+            scale: 2,
             backgroundColor: '#ffffff',
-            useCORS: true, 
+            useCORS: true,
             logging: false,
         });
 
@@ -130,7 +130,7 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
                 }
 
                 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                let url = isMobile 
+                let url = isMobile
                     ? `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`
                     : `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
 
@@ -215,7 +215,7 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
                             </div>
                         </div>
 
-                         <div className="mb-12">
+                        <div className="mb-12">
                             <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 mb-3 pb-1">Pagamento</h2>
                             <div className="flex justify-end">
                                 <div className="w-1/2">
@@ -260,7 +260,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
     // serviceStatus removed from form state inputs but kept for object creation default
     const serviceStatus = 'PENDING';
-    
+
     // Filter State
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -485,7 +485,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                     </div>
                 </div>
             )}
-            
+
             {/* Document Modal */}
             {viewingService && <ServiceDocumentModal service={viewingService} client={client} currentUser={currentUser} onClose={() => setViewingService(null)} />}
 
@@ -498,10 +498,10 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 </div>
                 {/* Client Info & Tabs */}
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700">
-                     <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+                    <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
                         <div>
                             <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">{client.name} <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-md border border-slate-300 dark:border-slate-600">{client.category}</span></h1>
-                             {client.cnpj && <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1 flex items-center gap-2"><Building size={14} /> CNPJ: {client.cnpj}</p>}
+                            {client.cnpj && <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1 flex items-center gap-2"><Building size={14} /> CNPJ: {client.cnpj}</p>}
                         </div>
                     </div>
                     {/* Tabs */}
@@ -564,7 +564,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                     <div><label className="block text-sm font-bold text-red-700 dark:text-red-400 mb-1">Pago ao Motoboy (R$)</label><input required type="number" min="0" step="0.01" className="w-full p-2 border border-red-300 dark:border-red-600 rounded-lg" value={driverFee} onChange={e => setDriverFee(e.target.value)} /></div>
                                     <div><label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Solicitado Por</label><input required className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg" value={requester} onChange={e => setRequester(e.target.value)} /></div>
                                 </div>
-                                
+
                                 <div className="md:col-span-2 pt-4 border-t border-slate-200 dark:border-slate-700 grid grid-cols-1 gap-6">
                                     <div>
                                         <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Método de Pagamento</label>
@@ -597,7 +597,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 {activeTab === 'financial' && (
                     <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 space-y-6">
                         {/* ... Financial Stats content ... */}
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 border-l-4 border-l-emerald-500">
                                 <div className="flex items-center justify-between">
                                     <div>
@@ -635,7 +635,6 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                 <th className="p-4 font-bold text-slate-800 dark:text-white">Solicitante</th>
                                 <th className="p-4 font-bold text-slate-800 dark:text-white text-right">Cobrado</th>
 
-                                {/* REMOVED: Status Serviço Column */}
                                 {activeTab === 'services' && (
                                     <>
                                         <th className="p-4 font-bold text-slate-800 dark:text-white text-right">Motoboy</th>
@@ -667,7 +666,6 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                             <td className="p-4 align-top">{service.requesterName}</td>
                                             <td className="p-4 text-right font-bold align-top">R$ {service.cost.toFixed(2)}</td>
 
-                                            {/* REMOVED: Status Serviço Cell */}
                                             {activeTab === 'services' && (
                                                 <>
                                                     <td className="p-4 text-right font-bold text-red-600 align-top">R$ {service.driverFee?.toFixed(2) || '0.00'}</td>

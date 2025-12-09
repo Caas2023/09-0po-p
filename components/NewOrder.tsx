@@ -240,7 +240,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                     {/* Values */}
                     <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
                         <h3 className="font-bold text-slate-800 dark:text-white mb-4">Financeiro e Status</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Valor Cobrado (Receita)</label>
                                 <div className="relative">
@@ -277,27 +277,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                     />
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Status Inicial</label>
-                                <div className="relative">
-                                    <div className="absolute left-3 top-2.5 text-slate-500 dark:text-slate-400">
-                                        {status === 'PENDING' && <Clock size={18} />}
-                                        {status === 'IN_PROGRESS' && <Bike size={18} />}
-                                        {status === 'DONE' && <CheckCircle size={18} />}
-                                        {status === 'CANCELLED' && <XCircle size={18} />}
-                                    </div>
-                                    <select
-                                        required
-                                        className="w-full pl-10 p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium appearance-none"
-                                        value={status}
-                                        onChange={e => setStatus(e.target.value as ServiceStatus)}
-                                    >
-                                        <option value="PENDING">Pendente</option>
-                                        <option value="IN_PROGRESS">Em Rota</option>
-                                        <option value="DONE">Concluído</option>
-                                    </select>
-                                </div>
-                            </div>
+
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
