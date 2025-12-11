@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Client, ServiceRecord, ExpenseRecord, PaymentMethod, User } from '../types';
 import { saveService } from '../services/storageService';
-import { TrendingUp, DollarSign, Bike, Wallet, Calendar, Fuel, Utensils, Plus, X, MapPin, User as UserIcon, CheckCircle, Timer } from 'lucide-react';
+import { TrendingUp, DollarSign, Bike, Wallet, Calendar, Fuel, Utensils, Plus, X, MapPin, User as UserIcon, CheckCircle, Timer, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface DashboardProps {
@@ -26,7 +26,7 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('MONTHLY');
   const [showNewServiceModal, setShowNewServiceModal] = useState(false);
   
-  // --- New Service Form State (Padronizado) ---
+  // --- New Service Form State (PADRONIZADO) ---
   const [selectedClientId, setSelectedClientId] = useState('');
   const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
   const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
@@ -42,7 +42,7 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
   const [isPaid, setIsPaid] = useState(false);
 
-  // ... (Lógica de Filtros e Gráficos mantida para não quebrar o dashboard) ...
+  // 1. Filter Data
   const { filteredServices, filteredExpenses, dateLabel } = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -71,7 +71,9 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
     return { filteredServices: services.filter(s => filterByDate(s.date)), filteredExpenses: expenses.filter(e => filterByDate(e.date)), dateLabel: label };
   }, [services, expenses, timeFrame]);
   
+  // 2. Calculate Stats
   const stats = useMemo(() => {
+    // TOTAL INTERNO = Custo + Espera (Taxa Extra NÃO entra aqui)
     const totalRevenue = filteredServices.reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
     const totalDriverPay = filteredServices.reduce((sum, s) => sum + (s.driverFee || 0), 0);
     const totalPending = filteredServices.filter(s => !s.paid).reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
@@ -92,6 +94,7 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
     return { totalRevenue, totalPending, totalDriverPay, totalOperationalExpenses, netProfit, revenueByMethod, expensesByCat };
   }, [filteredServices, filteredExpenses]);
 
+  // 3. Chart Data
   const chartData = useMemo(() => {
     const dataMap = new Map<string, any>();
     const addToMap = (dateStr: string, rev: number, cost: number) => {
@@ -167,7 +170,7 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
       else { const n = [...deliveryAddresses]; n[i] = v; setDeliveryAddresses(n); }
   };
 
-  // CÁLCULO PADRONIZADO PARA O BOX DE TOTAIS 
+  // CÁLCULO PADRONIZADO PARA O BOX DE TOTAIS DO MODAL
   const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
   const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
 
@@ -197,21 +200,111 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
         </div>
       </div>
       
-      {/* Cards de Resumo */}
+      {/* --- CARDS DE RESUMO (RESTAURADOS) --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10"><DollarSign size={48} className="text-blue-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Faturamento ({dateLabel})</p>
           <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-400">R$ {stats.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
+
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden border-l-4 border-l-amber-400">
+          <div className="absolute top-0 right-0 p-4 opacity-10"><Clock size={48} className="text-amber-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">A Receber</p>
           <h3 className="text-2xl font-bold text-amber-600">R$ {stats.totalPending.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-        {/* ... (Outros cards mantidos) ... */}
+
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10"><Bike size={48} className="text-red-600" /></div>
+          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Pago aos Motoboys</p>
+          <h3 className="text-2xl font-bold text-red-600 dark:text-red-400">R$ {stats.totalDriverPay.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
+        </div>
+
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10"><Wallet size={48} className="text-orange-600" /></div>
+          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Despesas (Gas/Almoço)</p>
+          <h3 className="text-2xl font-bold text-orange-600 dark:text-orange-400">R$ {stats.totalOperationalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
+        </div>
+
+         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10"><TrendingUp size={48} className="text-emerald-600" /></div>
+          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Lucro Líquido</p>
+          <h3 className={`text-2xl font-bold ${stats.netProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+              R$ {stats.netProfit.toLocaleString(undefined, {minimumFractionDigits: 2})}
+          </h3>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-         {/* ... (Gráficos mantidos) ... */}
+        {/* Chart Section (RESTAURADO) */}
+        <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <TrendingUp className="text-slate-500" size={20} /> Evolução: {dateLabel}
+                </h2>
+            </div>
+            <div className="h-80 w-full">
+            {chartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="name" tick={{fill: '#64748b', fontSize: 11}} axisLine={false} tickLine={false} />
+                    <YAxis tick={{fill: '#64748b', fontSize: 11}} axisLine={false} tickLine={false} tickFormatter={(value) => `R$${value}`} />
+                    <Tooltip cursor={{fill: '#f1f5f9'}} formatter={(value: number) => `R$ ${value.toFixed(2)}`} />
+                    <Legend wrapperStyle={{ paddingTop: '20px' }}/>
+                    <Bar dataKey="revenue" name="Faturamento" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="cost" name="Custos Totais" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="profit" name="Lucro" fill="#10b981" radius={[4, 4, 0, 0]} />
+                </BarChart>
+                </ResponsiveContainer>
+            ) : (
+                <div className="h-full flex items-center justify-center text-slate-400 font-medium">Sem dados para o período.</div>
+            )}
+            </div>
+        </div>
+
+        {/* Right Column: Methods & Expenses (RESTAURADO) */}
+        <div className="flex flex-col gap-6">
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+                <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Receitas por Método</h2>
+                <div className="space-y-4">
+                    <div className="flex justify-between p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-100 dark:border-emerald-800">
+                        <div className="flex items-center gap-3"><span className="text-slate-800 dark:text-white font-bold">Dinheiro (Caixa)</span></div>
+                        <span className="font-bold text-emerald-700">R$ {stats.revenueByMethod['CASH'].toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100">
+                        <div className="flex items-center gap-3"><span className="text-slate-700 dark:text-slate-300 font-medium">Pix</span></div>
+                        <span className="font-semibold text-slate-800 dark:text-white">R$ {stats.revenueByMethod['PIX'].toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100">
+                        <div className="flex items-center gap-3"><span className="text-slate-700 dark:text-slate-300 font-medium">Cartão</span></div>
+                        <span className="font-semibold text-slate-800 dark:text-white">R$ {stats.revenueByMethod['CARD'].toFixed(2)}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex-1">
+                <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Detalhamento de Gastos</h2>
+                <div className="space-y-4">
+                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                        <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Bike size={18}/> Motoboy</span>
+                        <span className="font-semibold text-slate-800 dark:text-white">R$ {stats.totalDriverPay.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                        <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Fuel size={18}/> Gasolina</span>
+                        <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['GAS'] || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                        <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Utensils size={18}/> Almoço</span>
+                        <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['LUNCH'] || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                        <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Wallet size={18}/> Outros</span>
+                        <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['OTHER'] || 0).toFixed(2)}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
       </div>
 
       {/* --- MODAL NOVA CORRIDA (PADRONIZADO) --- */}
@@ -318,7 +411,7 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
                         </div>
 
                         {/* BOX TOTAIS - PADRONIZADO */}
-                        <div className="p-4 bg-slate-800 rounded-lg flex justify-between items-center border border-slate-700">
+                        <div className="p-4 bg-slate-800 rounded-lg flex justify-between items-center border border-slate-700 shadow-inner">
                             <div>
                                 <span className="block text-[10px] font-bold text-slate-400 uppercase">TOTAL INTERNO (BASE + ESPERA)</span>
                                 <span className="text-xl font-bold text-white">R$ {currentTotal.toFixed(2)}</span>
@@ -356,9 +449,10 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
                         </div>
                     </div>
                 </form>
+                
                 <div className="p-4 border-t border-slate-700 bg-slate-800 flex justify-end gap-3">
                     <button type="button" onClick={resetForm} className="px-6 py-2.5 text-slate-400 font-bold hover:text-white transition-colors">Cancelar</button>
-                    <button type="submit" onClick={handleCreateService} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg flex items-center gap-2"><CheckCircle size={20} /> Registrar Corrida</button>
+                    <button type="submit" onClick={handleCreateService} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg flex items-center gap-2"><CheckCircle size={18} /> Registrar Corrida</button>
                 </div>
             </div>
         </div>
