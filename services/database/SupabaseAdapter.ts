@@ -95,9 +95,9 @@ export class SupabaseAdapter implements DatabaseAdapter {
             paid: d.paid,
             status: d.status,
             
-            // Mapeando novos campos
-            waitingTime: d.waiting_time,
-            extraFee: d.extra_fee
+            // MAPEAR OS CAMPOS NOVOS DO BANCO (snake_case -> camelCase)
+            waitingTime: d.waiting_time, 
+            extraFee: d.extra_fee        
         })) as ServiceRecord[];
     }
 
@@ -116,7 +116,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
             paid: service.paid,
             payment_method: service.paymentMethod,
             
-            // Salvando novos campos
+            // SALVAR OS CAMPOS NOVOS (camelCase -> snake_case)
             waiting_time: service.waitingTime,
             extra_fee: service.extraFee
         };
@@ -136,7 +136,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
             paid: service.paid,
             payment_method: service.paymentMethod,
             
-            // Atualizando novos campos
+            // ATUALIZAR CAMPOS (camelCase -> snake_case)
             waiting_time: service.waitingTime,
             extra_fee: service.extraFee
         };
@@ -177,6 +177,4 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
     async deleteExpense(id: string): Promise<void> {
         const { error } = await this.supabase.from('expenses').delete().eq('id', id);
-        if (error) throw new Error('Falha ao excluir despesa');
-    }
-}
+        if
