@@ -28,7 +28,6 @@ export interface Client {
 }
 
 export type PaymentMethod = 'PIX' | 'CASH' | 'CARD';
-// RESTAURADO: O sistema precisa disso para os gráficos
 export type ServiceStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
 
 export interface ServiceRecord {
@@ -45,7 +44,11 @@ export interface ServiceRecord {
   imageUrl?: string;
   paid: boolean; 
   paymentMethod?: PaymentMethod;
-  status: ServiceStatus; // RESTAURADO
+  status: ServiceStatus;
+  
+  // --- NOVOS CAMPOS ---
+  waitingTime?: string; // Ex: "30 min"
+  extraFee?: number;    // Ex: 15.00
 }
 
 export type ExpenseCategory = 'GAS' | 'LUNCH' | 'OTHER';
