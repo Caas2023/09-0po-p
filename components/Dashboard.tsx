@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Client, ServiceRecord, ExpenseRecord, PaymentMethod, User, ServiceStatus } from '../types';
 import { saveService, updateService, deleteService } from '../services/storageService';
-import { TrendingUp, DollarSign, Bike, Wallet, Banknote, QrCode, CreditCard, Calendar, Filter, Utensils, Fuel, Clock, Users, Trophy, Package, ArrowUpRight, ArrowDownRight, Plus, X, MapPin, User as UserIcon, CheckCircle, AlertCircle, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import { TrendingUp, DollarSign, Bike, Wallet, Banknote, QrCode, CreditCard, Calendar, Filter, Utensils, Fuel, Clock, Users, Trophy, Package, ArrowUpRight, ArrowDownRight, Plus, X, MapPin, User as UserIcon, CheckCircle, AlertCircle, MoreVertical, Pencil, Trash2, Timer } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface DashboardProps {
@@ -33,8 +33,13 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
   const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
   const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
   const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
-  const [cost, setCost] = useState('');
+  
+  // Financeiro
+  const [cost, setCost] = useState('');       // Valor Base
   const [driverFee, setDriverFee] = useState('');
+  const [waitingTime, setWaitingTime] = useState(''); // Espera (R$)
+  const [extraFee, setExtraFee] = useState('');       // Taxa Extra (R$)
+
   const [requester, setRequester] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
   const [isPaid, setIsPaid] = useState(false);
@@ -89,23 +94,28 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
     };
   }, [services, expenses, timeFrame]);
   
-  // 2. Calculate Stats
+  // 2. Calculate Stats (ATUALIZADO COM LÓGICA DE ESPERA)
   const stats = useMemo(() => {
-    const totalRevenue = filteredServices.reduce((sum, s) => sum + s.cost, 0);
+    // Receita Total = Custo Base + Tempo de Espera (Taxa Extra NÃO entra aqui)
+    const totalRevenue = filteredServices.reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
+    
     const totalDriverPay = filteredServices.reduce((sum, s) => sum + (s.driverFee || 0), 0);
-    const totalPending = filteredServices.filter(s => !s.paid).reduce((sum, s) => sum + s.cost, 0);
+    
+    // Pendente = Custo Base + Espera (dos não pagos)
+    const totalPending = filteredServices.filter(s => !s.paid).reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
+    
     const totalOperationalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
     const netProfit = totalRevenue - totalDriverPay - totalOperationalExpenses;
 
     const totalServices = services.length;
     const totalClients = clients.length;
     
-    // Contagem de ativos baseada em pagamento pendente (já que removemos status visual)
     const activeServices = filteredServices.filter(s => !s.paid).length;
 
     const revenueByMethod = filteredServices.reduce((acc, curr) => {
         const method = curr.paymentMethod || 'PIX';
-        acc[method] = (acc[method] || 0) + curr.cost;
+        // Soma Base + Espera por método
+        acc[method] = (acc[method] || 0) + curr.cost + (curr.waitingTime || 0);
         return acc;
     }, { PIX: 0, CASH: 0, CARD: 0 } as Record<string, number>);
 
@@ -121,7 +131,7 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
     };
   }, [filteredServices, filteredExpenses, services, clients]);
 
-  // 3. Chart Data
+  // 3. Chart Data (ATUALIZADO)
   const chartData = useMemo(() => {
     const dataMap = new Map<string, { name: string, revenue: number, cost: number, profit: number, sortKey: number }>();
 
@@ -152,7 +162,8 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
         dataMap.set(key, entry);
     };
 
-    filteredServices.forEach(s => addToMap(s.date, s.cost, s.driverFee || 0));
+    // Revenue no Gráfico = Custo + Espera
+    filteredServices.forEach(s => addToMap(s.date, s.cost + (s.waitingTime || 0), s.driverFee || 0));
     filteredExpenses.forEach(e => addToMap(e.date, 0, e.amount));
 
     return Array.from(dataMap.values())
@@ -178,10 +189,15 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
         deliveryAddresses: cleanDeliveries,
         cost: parseFloat(cost) || 0,
         driverFee: parseFloat(driverFee) || 0,
+        
+        // Novos Campos
+        waitingTime: parseFloat(waitingTime) || 0,
+        extraFee: parseFloat(extraFee) || 0,
+
         requesterName: requester,
         paymentMethod: paymentMethod,
         paid: isPaid,
-        status: 'PENDING' // FIXO internamente
+        status: 'PENDING'
     };
 
     await saveService(newService);
@@ -197,6 +213,8 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
       setDeliveryAddresses(['']);
       setCost('');
       setDriverFee('');
+      setWaitingTime('');
+      setExtraFee('');
       setRequester('');
       setPaymentMethod('PIX');
       setIsPaid(false);
@@ -228,26 +246,8 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
       }
   };
 
-  const getClientName = (clientId: string) => {
-    return clients.find(c => c.id === clientId)?.name || 'Cliente Desconhecido';
-  };
-
-  const handleTogglePayment = async (service: ServiceRecord) => {
-    const updatedService = { ...service, paid: !service.paid };
-    await updateService(updatedService);
-    toast.success(`Pagamento ${updatedService.paid ? 'marcado como PAGO' : 'marcado como PENDENTE'}`);
-    onRefresh();
-    setOpenMenuId(null);
-  };
-
-  const handleDeleteService = async (serviceId: string) => {
-    if (window.confirm('Tem certeza que deseja excluir esta corrida?')) {
-        await deleteService(serviceId);
-        toast.success('Corrida excluída com sucesso.');
-        onRefresh();
-        setOpenMenuId(null);
-    }
-  };
+  // Cálculo visual dentro do modal
+  const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -384,7 +384,7 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
         </div>
       </div>
 
-      {/* NEW SERVICE MODAL (SEM CAMPO DE STATUS) */}
+      {/* NEW SERVICE MODAL (ATUALIZADO COM ESPERA E TAXA) */}
       {showNewServiceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
             <div className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-700 animate-slide-up max-h-[90vh] flex flex-col">
@@ -409,6 +409,7 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
                             <input required type="date" className="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={serviceDate} onChange={e => setServiceDate(e.target.value)} />
                         </div>
                     </div>
+                    
                     {/* Routes */}
                     <div className="space-y-4">
                         <div className="space-y-3">
@@ -432,21 +433,44 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
                             <button type="button" onClick={() => handleAddAddress('delivery')} className="text-sm text-emerald-600 font-bold hover:underline flex items-center gap-1"><Plus size={16} /> Adicionar Parada</button>
                         </div>
                     </div>
-                    {/* Financials - STATUS FIELD REMOVED */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
-                        <div>
+
+                    {/* Financials - COM ESPERA E TAXA EXTRA */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                        <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-emerald-700 dark:text-emerald-400 mb-1">Valor Cobrado (R$)</label>
                             <input required type="number" min="0" step="0.01" className="w-full p-3 border border-emerald-200 rounded-xl font-bold" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00" />
                         </div>
-                        <div>
+                        <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-red-700 dark:text-red-400 mb-1">Pago ao Motoboy (R$)</label>
                             <input required type="number" min="0" step="0.01" className="w-full p-3 border border-red-200 rounded-xl font-bold" value={driverFee} onChange={e => setDriverFee(e.target.value)} placeholder="0.00" />
                         </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Espera (R$)</label>
+                            <div className="relative">
+                                <Timer size={14} className="absolute left-2.5 top-3 text-slate-400" />
+                                <input type="number" step="0.01" className="w-full pl-8 p-2 border border-slate-300 dark:border-slate-600 rounded-xl" value={waitingTime} onChange={e => setWaitingTime(e.target.value)} placeholder="0.00" />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Taxa Extra (R$)</label>
+                            <div className="relative">
+                                <DollarSign size={14} className="absolute left-2.5 top-3 text-slate-400" />
+                                <input type="number" step="0.01" className="w-full pl-8 p-2 border border-slate-300 dark:border-slate-600 rounded-xl" value={extraFee} onChange={e => setExtraFee(e.target.value)} placeholder="0.00" />
+                            </div>
+                        </div>
                     </div>
+
+                    {/* Total Preview */}
+                    <div className="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg flex justify-between items-center text-sm border border-slate-200 dark:border-slate-600">
+                        <span className="font-bold text-slate-600 dark:text-slate-300">Total Interno (Base + Espera):</span>
+                        <span className="font-bold text-emerald-600 text-lg">R$ {currentTotal.toFixed(2)}</span>
+                    </div>
+
                      <div className="pt-2">
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Solicitante</label>
                         <input required className="w-full p-3 border border-slate-300 rounded-xl" value={requester} onChange={e => setRequester(e.target.value)} placeholder="Nome" />
                     </div>
+
                     {/* Payment Toggle */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
                         <div>
