@@ -22,11 +22,11 @@ const getLocalDateStr = (d: Date) => {
     return `${year}-${month}-${day}`;
 };
 
-export function Dashboard({ clients, services, expenses, currentUser, onRefresh }: DashboardProps) {
+export function Dashboard({ clients = [], services = [], expenses = [], currentUser, onRefresh }: DashboardProps) {
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('MONTHLY');
   const [showNewServiceModal, setShowNewServiceModal] = useState(false);
   
-  // --- Estados do Formulário (PADRONIZADO) ---
+  // --- New Service Form State ---
   const [selectedClientId, setSelectedClientId] = useState('');
   const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
   const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
@@ -35,14 +35,14 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
   // Financeiro
   const [cost, setCost] = useState('');       
   const [driverFee, setDriverFee] = useState('');
-  const [waitingTime, setWaitingTime] = useState(''); 
+  const [waitingTime, setWaitingTime] = useState('');
   const [extraFee, setExtraFee] = useState('');       
 
   const [requester, setRequester] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
   const [isPaid, setIsPaid] = useState(false);
 
-  // 1. Lógica de Filtros (Restaurada)
+  // 1. Filter Data
   const { filteredServices, filteredExpenses, dateLabel } = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -71,23 +71,24 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
     return { filteredServices: services.filter(s => filterByDate(s.date)), filteredExpenses: expenses.filter(e => filterByDate(e.date)), dateLabel: label };
   }, [services, expenses, timeFrame]);
   
-  // 2. Lógica de Estatísticas (Restaurada e Corrigida com Espera)
+  // 2. Calculate Stats
   const stats = useMemo(() => {
-    // Receita Total = Custo Base + Tempo de Espera
-    const totalRevenue = filteredServices.reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
-    const totalDriverPay = filteredServices.reduce((sum, s) => sum + (s.driverFee || 0), 0);
-    // Pendente considera a espera também
-    const totalPending = filteredServices.filter(s => !s.paid).reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
-    const totalOperationalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const safeServices = filteredServices || [];
+    const safeExpenses = filteredExpenses || [];
+
+    const totalRevenue = safeServices.reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
+    const totalDriverPay = safeServices.reduce((sum, s) => sum + (s.driverFee || 0), 0);
+    const totalPending = safeServices.filter(s => !s.paid).reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
+    const totalOperationalExpenses = safeExpenses.reduce((sum, e) => sum + e.amount, 0);
     const netProfit = totalRevenue - totalDriverPay - totalOperationalExpenses;
 
-    const revenueByMethod = filteredServices.reduce((acc, curr) => {
+    const revenueByMethod = safeServices.reduce((acc, curr) => {
         const method = curr.paymentMethod || 'PIX';
         acc[method] = (acc[method] || 0) + curr.cost + (curr.waitingTime || 0);
         return acc;
     }, { PIX: 0, CASH: 0, CARD: 0 } as Record<string, number>);
 
-    const expensesByCat = filteredExpenses.reduce((acc, curr) => {
+    const expensesByCat = safeExpenses.reduce((acc, curr) => {
         acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
         return acc;
     }, {} as Record<string, number>);
@@ -95,7 +96,7 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
     return { totalRevenue, totalPending, totalDriverPay, totalOperationalExpenses, netProfit, revenueByMethod, expensesByCat };
   }, [filteredServices, filteredExpenses]);
 
-  // 3. Lógica do Gráfico (Restaurada)
+  // 3. Chart Data
   const chartData = useMemo(() => {
     const dataMap = new Map<string, any>();
     const addToMap = (dateStr: string, rev: number, cost: number) => {
@@ -122,7 +123,7 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
     return Array.from(dataMap.values()).map(e => ({ ...e, profit: e.revenue - e.cost })).sort((a, b) => a.sortKey - b.sortKey);
   }, [filteredServices, filteredExpenses, timeFrame]);
 
-  // --- Handlers do Modal ---
+  // --- Handlers ---
   const handleCreateService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClientId) return toast.error('Selecione um cliente.');
@@ -148,7 +149,7 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
     };
 
     await saveService(newService);
-    toast.success('Corrida registrada com sucesso!');
+    toast.success('Corrida registrada!');
     resetForm();
     onRefresh();
   };
@@ -171,32 +172,27 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
       else { const n = [...deliveryAddresses]; n[i] = v; setDeliveryAddresses(n); }
   };
 
-  // Cálculo visual para o modal
   const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
   const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header com Filtros */}
+    <div className="space-y-6 animate-fade-in pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
         <div>
             <h1 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                 Visão Geral Financeira
             </h1>
             <p className="text-slate-500 dark:text-slate-400 text-sm flex items-center gap-1 mt-1">
-                <Calendar size={14} />
-                Exibindo dados de: <span className="font-bold text-slate-700 dark:text-slate-300">{dateLabel}</span>
+                <Calendar size={14} /> Dados de: <span className="font-bold text-slate-700 dark:text-slate-300">{dateLabel}</span>
             </p>
         </div>
-
         <div className="flex gap-2">
              <div className="flex bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-x-auto">
-                <button onClick={() => setTimeFrame('DAILY')} className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all ${timeFrame === 'DAILY' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Hoje</button>
-                <button onClick={() => setTimeFrame('WEEKLY')} className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all ${timeFrame === 'WEEKLY' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Semana</button>
-                <button onClick={() => setTimeFrame('MONTHLY')} className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all ${timeFrame === 'MONTHLY' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Mês</button>
-                <button onClick={() => setTimeFrame('YEARLY')} className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all ${timeFrame === 'YEARLY' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Ano</button>
+                {['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'].map(t => (
+                    <button key={t} onClick={() => setTimeFrame(t as TimeFrame)} className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all ${timeFrame === t ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>{t === 'DAILY' ? 'Hoje' : t === 'WEEKLY' ? 'Semana' : t === 'MONTHLY' ? 'Mês' : 'Ano'}</button>
+                ))}
             </div>
-            <button onClick={() => setShowNewServiceModal(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-bold shadow-sm flex items-center gap-2">
+            <button onClick={() => setShowNewServiceModal(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-bold shadow-sm flex items-center gap-2">
                 <Plus size={20} /> <span className="hidden sm:inline">Nova Corrida</span>
             </button>
         </div>
@@ -205,31 +201,22 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
       {/* 1. CARDS DE RESUMO (RESTAURADOS) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10"><DollarSign size={48} className="text-blue-600" /></div>
-          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Faturamento ({dateLabel})</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Faturamento</p>
           <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-400">R$ {stats.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden border-l-4 border-l-amber-400">
-          <div className="absolute top-0 right-0 p-4 opacity-10"><Clock size={48} className="text-amber-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">A Receber</p>
           <h3 className="text-2xl font-bold text-amber-600">R$ {stats.totalPending.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10"><Bike size={48} className="text-red-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Pago aos Motoboys</p>
           <h3 className="text-2xl font-bold text-red-600 dark:text-red-400">R$ {stats.totalDriverPay.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10"><Wallet size={48} className="text-orange-600" /></div>
-          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Despesas (Gas/Almoço)</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Despesas</p>
           <h3 className="text-2xl font-bold text-orange-600 dark:text-orange-400">R$ {stats.totalOperationalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10"><TrendingUp size={48} className="text-emerald-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Lucro Líquido</p>
           <h3 className={`text-2xl font-bold ${stats.netProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
               R$ {stats.netProfit.toLocaleString(undefined, {minimumFractionDigits: 2})}
@@ -237,9 +224,8 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
         </div>
       </div>
 
-      {/* 2. GRÁFICO E DETALHES (RESTAURADOS) */}
+      {/* 2. GRÁFICOS E DETALHES (RESTAURADOS) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart Section */}
         <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -266,27 +252,20 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
             </div>
         </div>
 
-        {/* Right Column: Methods & Expenses */}
         <div className="flex flex-col gap-6">
             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Receitas por Método</h2>
                 <div className="space-y-4">
-                    <div className="flex justify-between p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-100 dark:border-emerald-800">
-                        <div className="flex items-center gap-3"><span className="text-slate-800 dark:text-white font-bold">Dinheiro (Caixa)</span></div>
-                        <span className="font-bold text-emerald-700">R$ {stats.revenueByMethod['CASH'].toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100">
-                        <div className="flex items-center gap-3"><span className="text-slate-700 dark:text-slate-300 font-medium">Pix</span></div>
-                        <span className="font-semibold text-slate-800 dark:text-white">R$ {stats.revenueByMethod['PIX'].toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100">
-                        <div className="flex items-center gap-3"><span className="text-slate-700 dark:text-slate-300 font-medium">Cartão</span></div>
-                        <span className="font-semibold text-slate-800 dark:text-white">R$ {stats.revenueByMethod['CARD'].toFixed(2)}</span>
-                    </div>
+                    {['CASH', 'PIX', 'CARD'].map(m => (
+                        <div key={m} className="flex justify-between p-3 rounded-lg border bg-slate-50 dark:bg-slate-700 border-slate-100">
+                            <span className="text-slate-800 dark:text-white font-bold">{m === 'CASH' ? 'Dinheiro' : m}</span>
+                            <span className="font-bold text-slate-800 dark:text-white">R$ {stats.revenueByMethod[m]?.toFixed(2) || '0.00'}</span>
+                        </div>
+                    ))}
                 </div>
             </div>
-
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex-1">
+            {/* Detalhes de Gastos */}
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Detalhamento de Gastos</h2>
                 <div className="space-y-4">
                     <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
@@ -296,14 +275,6 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
                     <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
                         <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Fuel size={18}/> Gasolina</span>
                         <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['GAS'] || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                        <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Utensils size={18}/> Almoço</span>
-                        <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['LUNCH'] || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                        <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Wallet size={18}/> Outros</span>
-                        <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['OTHER'] || 0).toFixed(2)}</span>
                     </div>
                 </div>
             </div>
@@ -404,7 +375,7 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
                             </div>
                         </div>
 
-                        <div className="p-4 bg-[#1e293b] rounded-lg flex justify-between items-center border border-slate-700">
+                        <div className="p-4 bg-[#1e293b] rounded-lg flex justify-between items-center border border-slate-700 shadow-inner">
                             <div>
                                 <span className="block text-[10px] font-bold text-slate-400 uppercase">TOTAL INTERNO (BASE + ESPERA)</span>
                                 <span className="text-xl font-bold text-white">R$ {currentTotal.toFixed(2)}</span>
@@ -416,8 +387,9 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
+                    {/* Pagamento */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
+                        <div className="p-3 border border-slate-700 rounded-xl">
                             <label className="block text-sm font-bold text-slate-300 mb-1">Solicitante</label>
                             <input required className="w-full p-2.5 border border-slate-700 rounded-lg bg-[#1e293b] text-white focus:ring-2 focus:ring-blue-600 outline-none" value={requester} onChange={e => setRequester(e.target.value)} placeholder="Nome" />
                         </div>
@@ -425,7 +397,9 @@ export function Dashboard({ clients, services, expenses, currentUser, onRefresh 
                             <label className="block text-xs font-bold text-slate-300 mb-2">Forma de Pagamento</label>
                             <div className="grid grid-cols-3 gap-2">
                                 {(['PIX', 'CASH', 'CARD'] as PaymentMethod[]).map(m => (
-                                    <button key={m} type="button" onClick={() => setPaymentMethod(m)} className={`flex items-center justify-center py-2 rounded-lg border text-xs font-bold ${paymentMethod === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-transparent border-slate-600 text-slate-400 hover:border-slate-400'}`}>{m}</button>
+                                    <button key={m} type="button" onClick={() => setPaymentMethod(m)} className={`flex items-center justify-center py-2 rounded-lg border text-xs font-bold ${paymentMethod === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-transparent border-slate-600 text-slate-400 hover:border-slate-400'}`}>
+                                        {m === 'PIX' ? 'Pix' : m === 'CASH' ? 'Din' : 'Card'}
+                                    </button>
                                 ))}
                             </div>
                         </div>
