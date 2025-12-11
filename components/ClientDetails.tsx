@@ -1,85 +1,32 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Client, ServiceRecord, PaymentMethod, User } from '../types';
-import { saveService, updateService, getServicesByClient, bulkUpdateServices, deleteService } from '../services/storageService';
-import { ArrowLeft, Plus, Calendar, MapPin, Filter, FileSpreadsheet, X, Bike, ChevronDown, FileText, ShieldCheck, Pencil, DollarSign, CheckCircle, AlertCircle, PieChart, List, CheckSquare, Square, MoreHorizontal, User as UserIcon, Building, MinusSquare, Share2, Phone, Mail, Banknote, QrCode, CreditCard, MessageCircle, Loader2, Download, Table, FileDown, Package, Clock, XCircle, Activity, Trash2, AlertTriangle, FileCheck, Timer } from 'lucide-react';
-// @ts-ignore
-import { jsPDF } from 'jspdf';
-// @ts-ignore
-import autoTable from 'jspdf-autotable';
-// @ts-ignore
-import html2canvas from 'html2canvas';
-import { toast } from 'sonner';
+import React, { useState } from 'react';
+import { Client, ServiceRecord, PaymentMethod, ServiceStatus } from '../types';
+import { saveService } from '../services/storageService';
+import { ArrowLeft, MapPin, Plus, X, User, Calendar, DollarSign, Bike, CheckCircle, Clock, Timer } from 'lucide-react';
 
-interface ClientDetailsProps {
-    client: Client;
-    currentUser: User;
-    onBack: () => void;
+interface NewOrderProps {
+    clients: Client[];
+    onSave: () => void;
+    onCancel: () => void;
+    currentUserId?: string;
 }
 
-const getPaymentMethodLabel = (method?: PaymentMethod) => {
-    switch (method) {
-        case 'PIX': return 'Pix';
-        case 'CASH': return 'Dinheiro';
-        case 'CARD': return 'Cartão';
-        default: return 'Não informado';
-    }
-};
-
-const getPaymentIcon = (method?: PaymentMethod) => {
-    switch (method) {
-        case 'PIX': return <QrCode size={14} className="text-blue-600" />;
-        case 'CASH': return <Banknote size={14} className="text-emerald-600" />;
-        case 'CARD': return <CreditCard size={14} className="text-purple-600" />;
-        default: return null;
-    }
-};
-
-const getLocalDateStr = (d: Date) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-};
-
-// ... (ServiceDocumentModal permanece inalterado para economizar espaço, use a versão anterior) ...
-// (A lógica de PDF já está correta lá)
-
-export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUser, onBack }) => {
-    const [services, setServices] = useState<ServiceRecord[]>([]);
-
-    useEffect(() => {
-        getServicesByClient(client.id).then(setServices);
-    }, [client.id]);
-    const [activeTab, setActiveTab] = useState<'services' | 'financial'>('services');
-
-    const [showForm, setShowForm] = useState(false);
-    const [showExportMenu, setShowExportMenu] = useState(false);
-    const [viewingService, setViewingService] = useState<ServiceRecord | null>(null);
-
-    const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
-    const [serviceToDelete, setServiceToDelete] = useState<ServiceRecord | null>(null);
-    const [isDeleting, setIsDeleting] = useState(false);
-
-    // Form State
-    const [serviceDate, setServiceDate] = useState(getLocalDateStr(new Date()));
+export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel }) => {
+    const [selectedClientId, setSelectedClientId] = useState<string>('');
+    const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
     const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
     const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
-    const [cost, setCost] = useState(''); 
-    const [driverFee, setDriverFee] = useState(''); 
-    const [waitingTime, setWaitingTime] = useState(''); // NEW
-    const [extraFee, setExtraFee] = useState('');       // NEW
-    const [requester, setRequester] = useState('');
-    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
     
-    // Filter State
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [statusFilter, setStatusFilter] = useState<'ALL' | 'PAID' | 'PENDING'>('ALL');
+    // Financeiro
+    const [cost, setCost] = useState('');
+    const [driverFee, setDriverFee] = useState('');
+    const [waitingTime, setWaitingTime] = useState('');
+    const [extraFee, setExtraFee] = useState('');
+    
+    const [requester, setRequester] = useState('');
+    const [paid, setPaid] = useState(false);
+    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
+    const [status, setStatus] = useState<ServiceStatus>('PENDING');
 
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-
-    // ... (Add/Remove Address functions - standard) ...
     const handleAddAddress = (type: 'pickup' | 'delivery') => {
         if (type === 'pickup') setPickupAddresses([...pickupAddresses, '']);
         else setDeliveryAddresses([...deliveryAddresses, '']);
@@ -105,47 +52,18 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         }
     };
 
-    const handleEditService = (service: ServiceRecord) => {
-        setEditingServiceId(service.id);
-        setServiceDate(service.date.includes('T') ? service.date.split('T')[0] : service.date);
-        setPickupAddresses([...service.pickupAddresses]);
-        setDeliveryAddresses([...service.deliveryAddresses]);
-        setCost(service.cost.toString());
-        setDriverFee(service.driverFee.toString());
-        setWaitingTime(service.waitingTime?.toString() || '');
-        setExtraFee(service.extraFee?.toString() || '');
-        setRequester(service.requesterName);
-        setPaymentMethod(service.paymentMethod || 'PIX');
-        setShowForm(true);
-        setActiveTab('services'); 
-    };
-
-    const resetForm = () => {
-        setPickupAddresses(['']);
-        setDeliveryAddresses(['']);
-        setCost('');
-        setDriverFee('');
-        setWaitingTime('');
-        setExtraFee('');
-        setRequester('');
-        setPaymentMethod('PIX');
-        setServiceDate(getLocalDateStr(new Date()));
-        setEditingServiceId(null);
-        setShowForm(false);
-    };
-
-    const handleSaveService = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!selectedClientId) return;
+
         const cleanPickups = pickupAddresses.filter(a => a.trim() !== '');
         const cleanDeliveries = deliveryAddresses.filter(a => a.trim() !== '');
         if (cleanPickups.length === 0 || cleanDeliveries.length === 0) return;
 
-        const originalService = services.find(s => s.id === editingServiceId);
-
         const serviceData: ServiceRecord = {
-            id: editingServiceId || crypto.randomUUID(),
+            id: crypto.randomUUID(),
             ownerId: '', 
-            clientId: client.id,
+            clientId: selectedClientId,
             pickupAddresses: cleanPickups,
             deliveryAddresses: cleanDeliveries,
             cost: parseFloat(cost),
@@ -154,157 +72,169 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
             extraFee: parseFloat(extraFee) || 0,
             requesterName: requester,
             date: serviceDate,
-            paid: originalService ? originalService.paid : false,
+            paid: paid,
             paymentMethod: paymentMethod,
-            status: originalService ? originalService.status : 'PENDING'
+            status: status
         };
 
-        if (editingServiceId) await updateService(serviceData);
-        else await saveService(serviceData);
-
-        const updatedList = await getServicesByClient(client.id);
-        setServices(updatedList);
-        resetForm();
+        await saveService(serviceData);
+        onSave();
     };
 
-    // ... (Filter logic, DateRange, BulkStatus - same as previous) ...
-    const getFilteredServices = () => {
-        let filtered = services;
-        if (startDate && endDate) {
-            filtered = filtered.filter(s => {
-                const dateStr = s.date.includes('T') ? s.date.split('T')[0] : s.date;
-                return dateStr >= startDate && dateStr <= endDate;
-            });
-        }
-        if (statusFilter === 'PAID') filtered = filtered.filter(s => s.paid === true);
-        else if (statusFilter === 'PENDING') filtered = filtered.filter(s => s.paid === false);
-        return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    };
-    const filteredServices = getFilteredServices();
-
-    // Stats Calculation
-    const stats = useMemo(() => {
-        const totalPaid = filteredServices.filter(s => s.paid).reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
-        const totalPending = filteredServices.filter(s => !s.paid).reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
-        return { totalPaid, totalPending };
-    }, [filteredServices]);
-
-    // PDF Export Logic (handleExportBoleto) - Use code from previous turn for full logic
-    const handleExportBoleto = () => { /* ... mesma lógica fornecida anteriormente ... */ };
-
-    // --- FORMULARIO PADRONIZADO AQUI ---
     const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
     const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
 
     return (
-        <div className="space-y-6 animate-fade-in relative">
-            {/* ... Header & Tabs ... */}
-            
-            {activeTab === 'services' && (
-                <>
-                    <div className="flex justify-end">
-                        <button onClick={() => { if (showForm) resetForm(); else setShowForm(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">
-                            {showForm ? <X size={18} /> : <Plus size={18} />} {showForm ? 'Cancelar' : 'Nova Corrida'}
-                        </button>
+        <div className="max-w-4xl mx-auto animate-slide-up">
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-4">
+                    <button onClick={onCancel} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors">
+                        <ArrowLeft size={24} />
+                    </button>
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Nova Corrida</h1>
+                        <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Preencha os dados para registrar um novo serviço</p>
+                    </div>
+                </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 overflow-hidden">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                    <label className="block text-sm font-bold text-slate-800 dark:text-white mb-2">Selecione o Cliente</label>
+                    <div className="relative">
+                        <User size={18} className="absolute left-3 top-3 text-slate-500 dark:text-slate-400" />
+                        <select required className="w-full pl-10 p-3 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none bg-white dark:bg-slate-700 text-lg font-semibold text-slate-900 dark:text-white shadow-sm" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
+                            <option value="" disabled>Escolha uma empresa...</option>
+                            {clients.map(client => (
+                                <option key={client.id} value={client.id}>{client.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                <div className="p-6 space-y-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Data do Serviço</label>
+                            <div className="relative">
+                                <Calendar size={18} className="absolute left-3 top-2.5 text-slate-500 dark:text-slate-400" />
+                                <input required type="date" className="w-full pl-10 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium" value={serviceDate} onChange={e => setServiceDate(e.target.value)} />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Solicitado Por</label>
+                            <input required className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 font-medium" value={requester} onChange={e => setRequester(e.target.value)} placeholder="Nome do funcionário" />
+                        </div>
                     </div>
 
-                    {showForm && (
-                        <form onSubmit={handleSaveService} className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 space-y-6 animate-slide-down">
-                            <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-4">
-                                <h3 className="font-bold text-slate-800 dark:text-white text-lg">{editingServiceId ? 'Editar Corrida' : 'Registrar Nova Corrida'}</h3>
-                                <input type="date" className="p-2 border rounded-lg dark:bg-slate-700 dark:text-white" value={serviceDate} onChange={e => setServiceDate(e.target.value)} />
-                            </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800/30">
+                            <h3 className="font-bold text-blue-800 dark:text-blue-400 flex items-center gap-2 mb-2 text-sm"><div className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400"></div> Coleta</h3>
+                            {pickupAddresses.map((addr, idx) => (
+                                <div key={idx} className="flex gap-2 relative">
+                                    <MapPin size={16} className="absolute left-3 top-2.5 text-blue-500" />
+                                    <input required className="w-full pl-9 p-2 border border-blue-200 dark:border-blue-800/50 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium" value={addr} onChange={e => handleAddressChange('pickup', idx, e.target.value)} placeholder="Endereço de retirada" />
+                                    {pickupAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('pickup', idx)} className="p-2 text-red-500 hover:bg-red-100 rounded-lg"><X size={18} /></button>}
+                                </div>
+                            ))}
+                            <button type="button" onClick={() => handleAddAddress('pickup')} className="text-sm text-blue-700 dark:text-blue-400 font-bold hover:underline flex items-center gap-1 mt-2"><Plus size={14} /> Adicionar Parada</button>
+                        </div>
+                        <div className="space-y-3 p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-200 dark:border-emerald-800/30">
+                            <h3 className="font-bold text-emerald-800 dark:text-emerald-400 flex items-center gap-2 mb-2 text-sm"><div className="w-2 h-2 rounded-full bg-emerald-600 dark:bg-emerald-400"></div> Entrega</h3>
+                            {deliveryAddresses.map((addr, idx) => (
+                                <div key={idx} className="flex gap-2 relative">
+                                    <MapPin size={16} className="absolute left-3 top-2.5 text-emerald-500" />
+                                    <input required className="w-full pl-9 p-2 border border-emerald-200 dark:border-emerald-800/50 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium" value={addr} onChange={e => handleAddressChange('delivery', idx, e.target.value)} placeholder="Endereço de destino" />
+                                    {deliveryAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('delivery', idx)} className="p-2 text-red-500 hover:bg-red-100 rounded-lg"><X size={18} /></button>}
+                                </div>
+                            ))}
+                            <button type="button" onClick={() => handleAddAddress('delivery')} className="text-sm text-emerald-700 dark:text-emerald-400 font-bold hover:underline flex items-center gap-1 mt-2"><Plus size={14} /> Adicionar Parada</button>
+                        </div>
+                    </div>
 
-                            {/* Addresses */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200">
-                                    <h3 className="text-sm font-bold text-blue-800 dark:text-blue-400">Coleta</h3>
-                                    {pickupAddresses.map((addr, idx) => (
-                                        <div key={idx} className="flex gap-2 relative">
-                                            <input className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:text-white" value={addr} onChange={e => handleAddressChange('pickup', idx, e.target.value)} placeholder="Endereço" />
-                                            {pickupAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('pickup', idx)}><X size={16} /></button>}
-                                        </div>
+                    {/* FINANCIAL SECTION - EXACT MATCH */}
+                    <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
+                        <h3 className="font-bold text-slate-800 dark:text-white mb-4">Financeiro e Adicionais</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                            <div>
+                                <label className="block text-sm font-bold text-emerald-700 dark:text-emerald-400 mb-1">Valor da Corrida (R$)</label>
+                                <div className="relative">
+                                    <DollarSign size={18} className="absolute left-3 top-2.5 text-emerald-600" />
+                                    <input required type="number" min="0" step="0.01" className="w-full pl-10 p-2 border border-emerald-300 dark:border-emerald-600 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-lg font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 placeholder-slate-400" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-red-700 dark:text-red-400 mb-1">Pago ao Motoboy (R$)</label>
+                                <div className="relative">
+                                    <Bike size={18} className="absolute left-3 top-2.5 text-red-600" />
+                                    <input required type="number" min="0" step="0.01" className="w-full pl-10 p-2 border border-red-300 dark:border-red-600 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-lg font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 placeholder-slate-400" value={driverFee} onChange={e => setDriverFee(e.target.value)} placeholder="0.00" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Valor Espera (R$)</label>
+                                <div className="relative">
+                                    <Timer size={16} className="absolute left-3 top-2.5 text-slate-400" />
+                                    <input type="number" step="0.01" className="w-full pl-9 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={waitingTime} onChange={e => setWaitingTime(e.target.value)} placeholder="0.00" />
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-1">Soma no total do sistema</p>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Taxa Extra (R$)</label>
+                                <div className="relative">
+                                    <DollarSign size={16} className="absolute left-3 top-2.5 text-slate-400" />
+                                    <input type="number" step="0.01" className="w-full pl-9 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={extraFee} onChange={e => setExtraFee(e.target.value)} placeholder="0.00" />
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-1">Soma apenas no PDF do Cliente</p>
+                            </div>
+                        </div>
+
+                        {/* PREVIEW BOX */}
+                        <div className="p-4 bg-slate-800 rounded-lg flex justify-between items-center border border-slate-700 shadow-inner mb-6">
+                            <div>
+                                <span className="block text-[10px] font-bold text-slate-400 uppercase">Total Interno (Base + Espera)</span>
+                                <span className="text-xl font-bold text-white">R$ {currentTotal.toFixed(2)}</span>
+                            </div>
+                            <div className="text-right">
+                                <span className="block text-[10px] font-bold text-slate-500 uppercase">Total no PDF Cliente (+ Taxa)</span>
+                                <span className="text-sm font-bold text-slate-300">R$ {pdfTotal.toFixed(2)}</span>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="p-4 border border-slate-200 dark:border-slate-600 rounded-xl">
+                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Forma de Pagamento</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {(['PIX', 'CASH', 'CARD'] as PaymentMethod[]).map(method => (
+                                        <button key={method} type="button" onClick={() => setPaymentMethod(method)} className={`flex items-center justify-center p-2 rounded-lg border transition-all font-bold text-xs ${paymentMethod === method ? 'bg-blue-600 text-white border-blue-600' : 'bg-transparent border-slate-600 text-slate-400 hover:border-slate-400'}`}>
+                                            {method === 'PIX' ? 'Pix' : method === 'CASH' ? 'Dinheiro' : 'Cartão'}
+                                        </button>
                                     ))}
-                                    <button type="button" onClick={() => handleAddAddress('pickup')} className="text-xs font-bold text-blue-600"><Plus size={14} /> Adicionar</button>
-                                </div>
-                                <div className="space-y-3 p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-200">
-                                    <h3 className="text-sm font-bold text-emerald-800 dark:text-emerald-400">Entrega</h3>
-                                    {deliveryAddresses.map((addr, idx) => (
-                                        <div key={idx} className="flex gap-2 relative">
-                                            <input className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:text-white" value={addr} onChange={e => handleAddressChange('delivery', idx, e.target.value)} placeholder="Endereço" />
-                                            {deliveryAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('delivery', idx)}><X size={16} /></button>}
-                                        </div>
-                                    ))}
-                                    <button type="button" onClick={() => handleAddAddress('delivery')} className="text-xs font-bold text-emerald-600"><Plus size={14} /> Adicionar</button>
                                 </div>
                             </div>
-
-                            {/* Financials - Padrão Exato */}
-                            <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-                                <h3 className="font-bold text-slate-800 dark:text-white mb-4 text-sm">Financeiro e Adicionais</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                            <div className="p-4 border border-slate-200 dark:border-slate-600 rounded-xl flex items-center justify-center">
+                                <label className="flex items-center gap-3 cursor-pointer select-none">
+                                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-all ${paid ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'}`}>
+                                        {paid && <CheckCircle size={16} className="text-white" />}
+                                    </div>
+                                    <input type="checkbox" className="hidden" checked={paid} onChange={e => setPaid(e.target.checked)} />
                                     <div>
-                                        <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-1">Valor da Corrida (R$)</label>
-                                        <div className="relative">
-                                            <DollarSign size={16} className="absolute left-3 top-3 text-emerald-500" />
-                                            <input required type="number" min="0" step="0.01" className="w-full pl-9 p-2.5 border border-emerald-300 rounded-lg bg-transparent text-lg font-bold dark:text-white" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00" />
-                                        </div>
+                                        <span className="block font-bold text-slate-200 text-sm">Status do Pagamento</span>
+                                        <span className="text-xs text-slate-500">{paid ? 'Pago' : 'Aguardando pagamento'}</span>
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-red-600 dark:text-red-400 mb-1">Pago ao Motoboy (R$)</label>
-                                        <div className="relative">
-                                            <Bike size={16} className="absolute left-3 top-3 text-red-500" />
-                                            <input required type="number" min="0" step="0.01" className="w-full pl-9 p-2.5 border border-red-300 rounded-lg bg-transparent text-lg font-bold dark:text-white" value={driverFee} onChange={e => setDriverFee(e.target.value)} placeholder="0.00" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Valor Espera (R$)</label>
-                                        <div className="relative">
-                                            <Timer size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                                            <input type="number" step="0.01" className="w-full pl-9 p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-transparent text-sm dark:text-white" value={waitingTime} onChange={e => setWaitingTime(e.target.value)} placeholder="0.00" />
-                                        </div>
-                                        <p className="text-[10px] text-slate-400 mt-1">Soma no total do sistema</p>
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Taxa Extra (R$)</label>
-                                        <div className="relative">
-                                            <DollarSign size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                                            <input type="number" step="0.01" className="w-full pl-9 p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-transparent text-sm dark:text-white" value={extraFee} onChange={e => setExtraFee(e.target.value)} placeholder="0.00" />
-                                        </div>
-                                        <p className="text-[10px] text-slate-400 mt-1">Soma apenas no PDF do Cliente</p>
-                                    </div>
-                                </div>
-
-                                {/* Total Preview Box */}
-                                <div className="p-4 bg-slate-800 rounded-lg flex justify-between items-center border border-slate-700 shadow-inner">
-                                    <div>
-                                        <span className="block text-[10px] font-bold text-slate-400 uppercase">Total Interno (Base + Espera)</span>
-                                        <span className="text-xl font-bold text-white">R$ {currentTotal.toFixed(2)}</span>
-                                    </div>
-                                    <div className="text-right">
-                                        <span className="block text-[10px] font-bold text-slate-500 uppercase">Total no PDF Cliente (+ Taxa)</span>
-                                        <span className="text-sm font-bold text-slate-300">R$ {pdfTotal.toFixed(2)}</span>
-                                    </div>
-                                </div>
+                                </label>
                             </div>
+                        </div>
+                    </div>
+                </div>
 
-                            <div className="pt-2">
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Solicitante</label>
-                                <input required className="w-full p-2 border rounded-lg dark:bg-slate-700 dark:text-white" value={requester} onChange={e => setRequester(e.target.value)} />
-                            </div>
-
-                            <div className="pt-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
-                                <button type="button" onClick={resetForm} className="px-4 py-2 font-bold text-slate-600">Cancelar</button>
-                                <button type="submit" className="bg-emerald-600 text-white px-8 py-2 rounded-lg font-bold">Salvar</button>
-                            </div>
-                        </form>
-                    )}
-                </>
-            )}
-            {/* ... (Table and other tabs) ... */}
+                <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
+                    <button type="button" onClick={onCancel} className="px-6 py-3 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors">Cancelar</button>
+                    <button type="submit" className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center gap-2"><CheckCircle size={20} /> Registrar Corrida</button>
+                </div>
+            </form>
         </div>
     );
 };
