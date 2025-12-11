@@ -177,4 +177,6 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
     async deleteExpense(id: string): Promise<void> {
         const { error } = await this.supabase.from('expenses').delete().eq('id', id);
-        if
+        if (error) throw new Error('Falha ao excluir despesa');
+    }
+}
