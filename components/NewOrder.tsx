@@ -1,13 +1,15 @@
+// components/NewOrder.tsx
+
 import React, { useState } from 'react';
 import { Client, ServiceRecord, PaymentMethod, ServiceStatus } from '../types';
 import { saveService } from '../services/storageService';
-import { ArrowLeft, MapPin, Plus, X, User, Calendar, DollarSign, Bike, CheckCircle, Clock, Timer } from 'lucide-react'; // Adicionei Timer/Clock
+import { ArrowLeft, MapPin, Plus, X, User, Calendar, DollarSign, Bike, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 
 interface NewOrderProps {
     clients: Client[];
     onSave: () => void;
     onCancel: () => void;
-    currentUserId?: string; // Adicionado para consistência se necessário, mas o hook usa interno
+    currentUserId?: string;
 }
 
 export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel }) => {
@@ -16,11 +18,11 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
     const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
     const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
     
-    // Financeiro e Detalhes
-    const [cost, setCost] = useState('');
+    // Financeiro
+    const [cost, setCost] = useState(''); // Valor da Corrida (Base)
     const [driverFee, setDriverFee] = useState('');
-    const [waitingTime, setWaitingTime] = useState(''); // NOVO
-    const [extraFee, setExtraFee] = useState('');       // NOVO
+    const [waitingTime, setWaitingTime] = useState(''); // Valor da Espera (R$)
+    const [extraFee, setExtraFee] = useState('');       // Taxa Extra (R$)
     
     const [requester, setRequester] = useState('');
     const [paid, setPaid] = useState(false);
@@ -77,16 +79,16 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
 
         const serviceData: ServiceRecord = {
             id: crypto.randomUUID(),
-            ownerId: '', // Será preenchido pelo storageService
+            ownerId: '', 
             clientId: selectedClientId,
             pickupAddresses: cleanPickups,
             deliveryAddresses: cleanDeliveries,
-            cost: parseFloat(cost),
+            cost: parseFloat(cost), // Valor base da corrida
             driverFee: parseFloat(driverFee) || 0,
             
-            // Novos Campos
-            waitingTime: waitingTime, 
-            extraFee: parseFloat(extraFee) || 0,
+            // Novos Campos Numéricos
+            waitingTime: parseFloat(waitingTime) || 0, // Valor em R$
+            extraFee: parseFloat(extraFee) || 0,       // Valor em R$
 
             requesterName: requester,
             date: serviceDate,
@@ -99,6 +101,9 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
         onSave();
     };
 
+    // Calculo do total visual para o usuário saber quanto vai dar
+    const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
+
     if (clients.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center h-96 text-center animate-fade-in">
@@ -106,7 +111,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                     <User size={48} className="text-slate-400" />
                 </div>
                 <h2 className="text-xl font-semibold text-slate-800 dark:text-white mb-2">Nenhum Cliente Encontrado</h2>
-                <p className="text-slate-600 dark:text-slate-400 max-w-md mb-6">Você precisa cadastrar clientes antes de criar uma nova corrida.</p>
                 <button onClick={onCancel} className="text-blue-600 dark:text-blue-400 font-bold hover:underline">
                     Voltar para Clientes
                 </button>
@@ -123,13 +127,13 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                     </button>
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Nova Corrida</h1>
-                        <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Preencha os dados para registrar um novo serviço</p>
+                        <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Preencha os dados do serviço</p>
                     </div>
                 </div>
             </div>
 
             <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 overflow-hidden">
-                {/* Client Selection Section */}
+                {/* Seleção de Cliente */}
                 <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
                     <label className="block text-sm font-bold text-slate-800 dark:text-white mb-2">Selecione o Cliente</label>
                     <div className="relative">
@@ -151,7 +155,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                 </div>
 
                 <div className="p-6 space-y-8">
-                    {/* Date & Requester */}
+                    {/* Data e Solicitante */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Data do Serviço</label>
@@ -180,9 +184,8 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                         </div>
                     </div>
 
-                    {/* Addresses */}
+                    {/* Endereços (Pickup & Delivery) */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {/* Pickup */}
                         <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800/30">
                             <h3 className="font-bold text-blue-800 dark:text-blue-400 flex items-center gap-2 mb-2">
                                 <div className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400"></div>
@@ -214,7 +217,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                             </button>
                         </div>
 
-                        {/* Delivery */}
                         <div className="space-y-3 p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-200 dark:border-emerald-800/30">
                             <h3 className="font-bold text-emerald-800 dark:text-emerald-400 flex items-center gap-2 mb-2">
                                 <div className="w-2 h-2 rounded-full bg-emerald-600 dark:bg-emerald-400"></div>
@@ -247,13 +249,13 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                         </div>
                     </div>
 
-                    {/* Values & Extras (SEÇÃO MODIFICADA) */}
+                    {/* FINANCEIRO - LÓGICA DE CÁLCULO VISUAL APLICADA AQUI */}
                     <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
                         <h3 className="font-bold text-slate-800 dark:text-white mb-4">Financeiro e Adicionais</h3>
                         
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                             <div className="md:col-span-2">
-                                <label className="block text-sm font-bold text-emerald-700 dark:text-emerald-400 mb-1">Valor Cobrado (R$)</label>
+                                <label className="block text-sm font-bold text-emerald-700 dark:text-emerald-400 mb-1">Valor da Corrida (R$)</label>
                                 <div className="relative">
                                     <div className="absolute left-3 top-2.5 text-emerald-600 dark:text-emerald-400">
                                         <DollarSign size={18} />
@@ -290,23 +292,26 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                 </div>
                             </div>
 
-                            {/* --- NOVOS CAMPOS AQUI --- */}
+                            {/* Valor de Espera (Agora em Reais) */}
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Espera (Opcional)</label>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Valor Espera (R$)</label>
                                 <div className="relative">
                                     <div className="absolute left-3 top-2.5 text-slate-400">
-                                        <Timer size={16} />
+                                        <Clock size={16} />
                                     </div>
                                     <input
-                                        type="text"
+                                        type="number"
+                                        step="0.01"
                                         className="w-full pl-9 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                                         value={waitingTime}
                                         onChange={e => setWaitingTime(e.target.value)}
-                                        placeholder="Ex: 20min"
+                                        placeholder="0.00"
                                     />
                                 </div>
+                                <p className="text-[10px] text-slate-400 mt-1">Soma no total do sistema</p>
                             </div>
 
+                            {/* Taxa Extra (Oculta do Total Interno) */}
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Taxa Extra (R$)</label>
                                 <div className="relative">
@@ -322,6 +327,19 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                         placeholder="0.00"
                                     />
                                 </div>
+                                <p className="text-[10px] text-slate-400 mt-1">Soma apenas no PDF do Cliente</p>
+                            </div>
+                        </div>
+
+                        {/* Visualizador de Totais */}
+                        <div className="mt-4 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg flex justify-between items-center border border-slate-200 dark:border-slate-600">
+                            <div>
+                                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total Interno (Base + Espera)</span>
+                                <p className="text-lg font-bold text-slate-800 dark:text-white">R$ {currentTotal.toFixed(2)}</p>
+                            </div>
+                            <div className="text-right opacity-75">
+                                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total no PDF Cliente (+ Taxa)</span>
+                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">R$ {(currentTotal + (parseFloat(extraFee) || 0)).toFixed(2)}</p>
                             </div>
                         </div>
 
@@ -336,7 +354,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                             onClick={() => setPaymentMethod(method)}
                                             className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all font-bold ${paymentMethod === method
                                                 ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-600 dark:border-blue-500 text-blue-800 dark:text-blue-400'
-                                                : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 hover:border-slate-400'
+                                                : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-700 hover:border-slate-400'
                                                 }`}
                                         >
                                             {method === 'PIX' && 'Pix'}
