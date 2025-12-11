@@ -1,5 +1,3 @@
-// components/NewOrder.tsx
-
 import React, { useState } from 'react';
 import { Client, ServiceRecord, PaymentMethod, ServiceStatus } from '../types';
 import { saveService } from '../services/storageService';
@@ -18,10 +16,10 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
     const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
     const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
     
-    // Financeiro
-    const [cost, setCost] = useState(''); // Valor da Corrida (Base)
+    // Estados Financeiros
+    const [cost, setCost] = useState('');       // Valor Base da Corrida
     const [driverFee, setDriverFee] = useState('');
-    const [waitingTime, setWaitingTime] = useState(''); // Valor da Espera (R$)
+    const [waitingTime, setWaitingTime] = useState(''); // Valor Espera (R$)
     const [extraFee, setExtraFee] = useState('');       // Taxa Extra (R$)
     
     const [requester, setRequester] = useState('');
@@ -83,12 +81,12 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
             clientId: selectedClientId,
             pickupAddresses: cleanPickups,
             deliveryAddresses: cleanDeliveries,
-            cost: parseFloat(cost), // Valor base da corrida
+            cost: parseFloat(cost), // Valor base
             driverFee: parseFloat(driverFee) || 0,
             
-            // Novos Campos Numéricos
-            waitingTime: parseFloat(waitingTime) || 0, // Valor em R$
-            extraFee: parseFloat(extraFee) || 0,       // Valor em R$
+            // Novos Campos Numéricos (R$)
+            waitingTime: parseFloat(waitingTime) || 0, 
+            extraFee: parseFloat(extraFee) || 0,
 
             requesterName: requester,
             date: serviceDate,
@@ -101,7 +99,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
         onSave();
     };
 
-    // Calculo do total visual para o usuário saber quanto vai dar
+    // Cálculo visual para o usuário (Base + Espera) - Taxa Extra fica oculta no total visual aqui
     const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
 
     if (clients.length === 0) {
@@ -184,8 +182,9 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                         </div>
                     </div>
 
-                    {/* Endereços (Pickup & Delivery) */}
+                    {/* Endereços */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Pickup */}
                         <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800/30">
                             <h3 className="font-bold text-blue-800 dark:text-blue-400 flex items-center gap-2 mb-2">
                                 <div className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400"></div>
@@ -217,6 +216,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                             </button>
                         </div>
 
+                        {/* Delivery */}
                         <div className="space-y-3 p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-200 dark:border-emerald-800/30">
                             <h3 className="font-bold text-emerald-800 dark:text-emerald-400 flex items-center gap-2 mb-2">
                                 <div className="w-2 h-2 rounded-full bg-emerald-600 dark:bg-emerald-400"></div>
@@ -249,7 +249,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                         </div>
                     </div>
 
-                    {/* FINANCEIRO - LÓGICA DE CÁLCULO VISUAL APLICADA AQUI */}
+                    {/* Área Financeira */}
                     <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
                         <h3 className="font-bold text-slate-800 dark:text-white mb-4">Financeiro e Adicionais</h3>
                         
@@ -292,7 +292,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                 </div>
                             </div>
 
-                            {/* Valor de Espera (Agora em Reais) */}
+                            {/* Valor de Espera (R$) */}
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Valor Espera (R$)</label>
                                 <div className="relative">
@@ -311,7 +311,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                 <p className="text-[10px] text-slate-400 mt-1">Soma no total do sistema</p>
                             </div>
 
-                            {/* Taxa Extra (Oculta do Total Interno) */}
+                            {/* Taxa Extra (R$) */}
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Taxa Extra (R$)</label>
                                 <div className="relative">
@@ -331,14 +331,14 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                             </div>
                         </div>
 
-                        {/* Visualizador de Totais */}
+                        {/* Visualizador de Total (Sem Taxa Extra) */}
                         <div className="mt-4 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg flex justify-between items-center border border-slate-200 dark:border-slate-600">
                             <div>
                                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total Interno (Base + Espera)</span>
                                 <p className="text-lg font-bold text-slate-800 dark:text-white">R$ {currentTotal.toFixed(2)}</p>
                             </div>
                             <div className="text-right opacity-75">
-                                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total no PDF Cliente (+ Taxa)</span>
+                                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total no PDF (+ Taxa)</span>
                                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">R$ {(currentTotal + (parseFloat(extraFee) || 0)).toFixed(2)}</p>
                             </div>
                         </div>
@@ -354,7 +354,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                             onClick={() => setPaymentMethod(method)}
                                             className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all font-bold ${paymentMethod === method
                                                 ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-600 dark:border-blue-500 text-blue-800 dark:text-blue-400'
-                                                : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-700 hover:border-slate-400'
+                                                : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 hover:border-slate-400'
                                                 }`}
                                         >
                                             {method === 'PIX' && 'Pix'}
