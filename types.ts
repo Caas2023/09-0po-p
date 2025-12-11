@@ -1,5 +1,3 @@
-// types.ts
-
 export type UserRole = 'ADMIN' | 'USER';
 export type UserStatus = 'ACTIVE' | 'BLOCKED';
 
@@ -38,7 +36,7 @@ export interface ServiceRecord {
   clientId: string;
   pickupAddresses: string[]; 
   deliveryAddresses: string[]; 
-  cost: number;        // Valor Base da corrida
+  cost: number;        // Valor Base
   driverFee: number; 
   requesterName: string;
   date: string;
@@ -48,9 +46,9 @@ export interface ServiceRecord {
   paymentMethod?: PaymentMethod;
   status: ServiceStatus;
   
-  // --- CAMPOS FINANCEIROS EXTRAS ---
-  waitingTime?: number; // Agora é NUMBER (Valor em R$)
-  extraFee?: number;    // Taxa Extra (só soma no PDF do cliente)
+  // --- NOVOS CAMPOS EM REAIS (R$) ---
+  waitingTime?: number; // Valor da Espera (Soma no interno e no cliente)
+  extraFee?: number;    // Taxa Extra (Soma APENAS no PDF do cliente)
 }
 
 export type ExpenseCategory = 'GAS' | 'LUNCH' | 'OTHER';
