@@ -93,7 +93,11 @@ export class SupabaseAdapter implements DatabaseAdapter {
             requesterName: d.requester_name,
             paymentMethod: d.payment_method,
             paid: d.paid,
-            status: d.status // IMPORTANTE: Recuperar o status do banco
+            status: d.status,
+            
+            // Mapeando novos campos
+            waitingTime: d.waiting_time,
+            extraFee: d.extra_fee
         })) as ServiceRecord[];
     }
 
@@ -103,14 +107,18 @@ export class SupabaseAdapter implements DatabaseAdapter {
             owner_id: service.ownerId,
             client_id: service.clientId,
             cost: service.cost,
-            status: service.status, // RESTAURADO: Envia o status (mesmo que seja sempre 'PENDING' na criação)
+            status: service.status,
             date: service.date,
             pickup_addresses: service.pickupAddresses,
             delivery_addresses: service.deliveryAddresses,
             driver_fee: service.driverFee,
             requester_name: service.requesterName,
             paid: service.paid,
-            payment_method: service.paymentMethod
+            payment_method: service.paymentMethod,
+            
+            // Salvando novos campos
+            waiting_time: service.waitingTime,
+            extra_fee: service.extraFee
         };
         const { error } = await this.supabase.from('services').insert(payload);
         if (error) console.error('Supabase insert error (service):', error);
@@ -119,14 +127,18 @@ export class SupabaseAdapter implements DatabaseAdapter {
     async updateService(service: ServiceRecord): Promise<void> {
         const payload = {
             cost: service.cost,
-            status: service.status, // RESTAURADO
+            status: service.status,
             date: service.date,
             pickup_addresses: service.pickupAddresses,
             delivery_addresses: service.deliveryAddresses,
             driver_fee: service.driverFee,
             requester_name: service.requesterName,
             paid: service.paid,
-            payment_method: service.paymentMethod
+            payment_method: service.paymentMethod,
+            
+            // Atualizando novos campos
+            waiting_time: service.waitingTime,
+            extra_fee: service.extraFee
         };
         const { error } = await this.supabase.from('services').update(payload).eq('id', service.id);
         if (error) console.error('Supabase update error (service):', error);
