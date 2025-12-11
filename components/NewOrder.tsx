@@ -1,13 +1,13 @@
-
 import React, { useState } from 'react';
 import { Client, ServiceRecord, PaymentMethod, ServiceStatus } from '../types';
 import { saveService } from '../services/storageService';
-import { ArrowLeft, MapPin, Plus, X, User, Calendar, DollarSign, Bike, CheckCircle, CreditCard, Package, Clock, XCircle } from 'lucide-react';
+import { ArrowLeft, MapPin, Plus, X, User, Calendar, DollarSign, Bike, CheckCircle, Clock, Timer } from 'lucide-react'; // Adicionei Timer/Clock
 
 interface NewOrderProps {
     clients: Client[];
     onSave: () => void;
     onCancel: () => void;
+    currentUserId?: string; // Adicionado para consistência se necessário, mas o hook usa interno
 }
 
 export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel }) => {
@@ -15,8 +15,13 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
     const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
     const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
     const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
+    
+    // Financeiro e Detalhes
     const [cost, setCost] = useState('');
     const [driverFee, setDriverFee] = useState('');
+    const [waitingTime, setWaitingTime] = useState(''); // NOVO
+    const [extraFee, setExtraFee] = useState('');       // NOVO
+    
     const [requester, setRequester] = useState('');
     const [paid, setPaid] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
@@ -72,12 +77,17 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
 
         const serviceData: ServiceRecord = {
             id: crypto.randomUUID(),
-            ownerId: '', // Placeholder, handled by storageService
+            ownerId: '', // Será preenchido pelo storageService
             clientId: selectedClientId,
             pickupAddresses: cleanPickups,
             deliveryAddresses: cleanDeliveries,
             cost: parseFloat(cost),
             driverFee: parseFloat(driverFee) || 0,
+            
+            // Novos Campos
+            waitingTime: waitingTime, 
+            extraFee: parseFloat(extraFee) || 0,
+
             requesterName: requester,
             date: serviceDate,
             paid: paid,
@@ -237,12 +247,13 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                         </div>
                     </div>
 
-                    {/* Values */}
+                    {/* Values & Extras (SEÇÃO MODIFICADA) */}
                     <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
-                        <h3 className="font-bold text-slate-800 dark:text-white mb-4">Financeiro e Status</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Valor Cobrado (Receita)</label>
+                        <h3 className="font-bold text-slate-800 dark:text-white mb-4">Financeiro e Adicionais</h3>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-bold text-emerald-700 dark:text-emerald-400 mb-1">Valor Cobrado (R$)</label>
                                 <div className="relative">
                                     <div className="absolute left-3 top-2.5 text-emerald-600 dark:text-emerald-400">
                                         <DollarSign size={18} />
@@ -259,8 +270,9 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                     />
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Pago ao Motoboy (Despesa)</label>
+                            
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-bold text-red-700 dark:text-red-400 mb-1">Pago ao Motoboy (R$)</label>
                                 <div className="relative">
                                     <div className="absolute left-3 top-2.5 text-red-600 dark:text-red-400">
                                         <Bike size={18} />
@@ -278,6 +290,39 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                 </div>
                             </div>
 
+                            {/* --- NOVOS CAMPOS AQUI --- */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Espera (Opcional)</label>
+                                <div className="relative">
+                                    <div className="absolute left-3 top-2.5 text-slate-400">
+                                        <Timer size={16} />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        className="w-full pl-9 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                                        value={waitingTime}
+                                        onChange={e => setWaitingTime(e.target.value)}
+                                        placeholder="Ex: 20min"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Taxa Extra (R$)</label>
+                                <div className="relative">
+                                    <div className="absolute left-3 top-2.5 text-slate-400">
+                                        <DollarSign size={16} />
+                                    </div>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        className="w-full pl-9 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                                        value={extraFee}
+                                        onChange={e => setExtraFee(e.target.value)}
+                                        placeholder="0.00"
+                                    />
+                                </div>
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
