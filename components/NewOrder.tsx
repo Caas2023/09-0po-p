@@ -72,7 +72,9 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
         <div className="max-w-4xl mx-auto animate-slide-up">
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-4">
-                    <button onClick={onCancel} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors"><ArrowLeft size={24} /></button>
+                    <button onClick={onCancel} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors">
+                        <ArrowLeft size={24} />
+                    </button>
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Nova Corrida</h1>
                         <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Preencha os dados do serviço</p>
@@ -81,6 +83,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
             </div>
 
             <form onSubmit={handleSubmit} className="bg-[#0f172a] rounded-xl shadow-2xl border border-slate-700 overflow-hidden text-slate-100">
+                {/* Header */}
                 <div className="p-6 border-b border-slate-700 bg-[#1e293b]">
                     <label className="block text-sm font-bold text-white mb-2">Selecione o Cliente</label>
                     <div className="relative">
@@ -94,6 +97,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                     </div>
                 </div>
 
+                {/* Body */}
                 <div className="p-6 space-y-8">
                     {/* Linha Data & Solicitante */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -113,7 +117,9 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                     {/* Endereços */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-3 p-4 bg-blue-900/10 rounded-xl border border-blue-900/30">
-                            <h3 className="font-bold text-blue-400 flex items-center gap-2 mb-2 text-sm"><div className="w-2 h-2 rounded-full bg-blue-500"></div> Coleta</h3>
+                            <h3 className="font-bold text-blue-400 flex items-center gap-2 mb-2 text-sm">
+                                <div className="w-2 h-2 rounded-full bg-blue-500"></div> Coleta
+                            </h3>
                             {pickupAddresses.map((addr, idx) => (
                                 <div key={`p-${idx}`} className="flex gap-2 relative">
                                     <MapPin size={16} className="absolute left-3 top-3 text-blue-500" />
@@ -124,7 +130,9 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                             <button type="button" onClick={() => handleAddAddress('pickup')} className="text-xs text-blue-400 font-bold hover:underline flex items-center gap-1"><Plus size={14} /> Adicionar Parada</button>
                         </div>
                         <div className="space-y-3 p-4 bg-emerald-900/10 rounded-xl border border-emerald-900/30">
-                            <h3 className="font-bold text-emerald-400 flex items-center gap-2 mb-2 text-sm"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Entrega</h3>
+                            <h3 className="font-bold text-emerald-400 flex items-center gap-2 mb-2 text-sm">
+                                <div className="w-2 h-2 rounded-full bg-emerald-500"></div> Entrega
+                            </h3>
                             {deliveryAddresses.map((addr, idx) => (
                                 <div key={`d-${idx}`} className="flex gap-2 relative">
                                     <MapPin size={16} className="absolute left-3 top-3 text-emerald-500" />
@@ -136,9 +144,10 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                         </div>
                     </div>
 
-                    {/* Financeiro Completo (Layout Exato) */}
+                    {/* Financeiro Completo */}
                     <div className="pt-4 border-t border-slate-700">
                         <h3 className="font-bold text-white mb-4 text-sm">Financeiro e Adicionais</h3>
+                        
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                             <div>
                                 <label className="block text-xs font-bold text-emerald-400 mb-1">Valor da Corrida (R$)</label>
@@ -175,7 +184,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                             </div>
                         </div>
 
-                        {/* BOX TOTAIS - PADRONIZADO */}
+                        {/* BOX TOTAIS */}
                         <div className="p-4 bg-[#1e293b] rounded-lg flex justify-between items-center border border-slate-700 shadow-inner">
                             <div>
                                 <span className="block text-[10px] font-bold text-slate-400 uppercase">TOTAL INTERNO (BASE + ESPERA)</span>
@@ -200,24 +209,25 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                 ))}
                             </div>
                         </div>
-                        <div className="p-3 border border-slate-700 rounded-xl flex items-center justify-center">
-                            <label className="flex items-center gap-3 cursor-pointer select-none">
-                                <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-all ${isPaid ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'}`}>
-                                    {isPaid && <CheckCircle size={14} className="text-white" />}
+                        <div className="p-4 border border-slate-700 rounded-xl flex items-center justify-center bg-[#1e293b]">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${paid ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'}`}>
+                                    {paid && <CheckCircle size={14} className="text-white" />}
                                 </div>
-                                <input type="checkbox" className="hidden" checked={isPaid} onChange={e => setIsPaid(e.target.checked)} />
-                                <div>
-                                    <span className="block font-bold text-slate-200 text-sm">Status do Pagamento</span>
-                                    <span className="text-xs text-slate-500">{isPaid ? 'Pago' : 'Aguardando pagamento'}</span>
-                                </div>
+                                <input type="checkbox" className="hidden" checked={paid} onChange={e => setPaid(e.target.checked)} />
+                                <span className="text-sm font-bold text-slate-300">Status do Pagamento: {paid ? 'Pago' : 'Pendente'}</span>
                             </label>
                         </div>
                     </div>
-                </form>
-                
+
+                </div>
+
+                {/* Footer */}
                 <div className="p-4 border-t border-slate-700 bg-[#1e293b] flex justify-end gap-3">
                     <button type="button" onClick={onCancel} className="px-6 py-2.5 text-slate-400 font-bold hover:text-white transition-colors">Cancelar</button>
-                    <button type="submit" className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg flex items-center gap-2"><CheckCircle size={20} /> Registrar Corrida</button>
+                    <button type="submit" className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg flex items-center gap-2">
+                        <CheckCircle size={20} /> Registrar Corrida
+                    </button>
                 </div>
             </form>
         </div>
