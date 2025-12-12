@@ -83,7 +83,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
             </div>
 
             <form onSubmit={handleSubmit} className="bg-[#0f172a] rounded-xl shadow-2xl border border-slate-700 overflow-hidden text-slate-100">
-                {/* Header */}
+                {/* Header do Form */}
                 <div className="p-6 border-b border-slate-700 bg-[#1e293b]">
                     <label className="block text-sm font-bold text-white mb-2">Selecione o Cliente</label>
                     <div className="relative">
@@ -97,7 +97,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                     </div>
                 </div>
 
-                {/* Body */}
+                {/* Corpo do Form */}
                 <div className="p-6 space-y-8">
                     {/* Linha Data & Solicitante */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -222,7 +222,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
 
                 </div>
 
-                {/* Footer */}
+                {/* Footer do Form */}
                 <div className="p-4 border-t border-slate-700 bg-[#1e293b] flex justify-end gap-3">
                     <button type="button" onClick={onCancel} className="px-6 py-2.5 text-slate-400 font-bold hover:text-white transition-colors">Cancelar</button>
                     <button type="submit" className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg flex items-center gap-2">
