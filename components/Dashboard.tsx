@@ -76,6 +76,7 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
     const safeServices = filteredServices || [];
     const safeExpenses = filteredExpenses || [];
 
+    // Receita considera Custo Base + Espera
     const totalRevenue = safeServices.reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
     const totalDriverPay = safeServices.reduce((sum, s) => sum + (s.driverFee || 0), 0);
     const totalPending = safeServices.filter(s => !s.paid).reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
@@ -88,7 +89,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
         return acc;
     }, { PIX: 0, CASH: 0, CARD: 0 } as Record<string, number>);
 
-    // Agrupa despesas por categoria
     const expensesByCat = safeExpenses.reduce((acc, curr) => {
         const cat = curr.category || 'OTHER';
         acc[cat] = (acc[cat] || 0) + curr.amount;
@@ -207,25 +207,21 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Faturamento</p>
           <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-400">R$ {stats.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden border-l-4 border-l-amber-400">
           <div className="absolute top-0 right-0 p-4 opacity-10"><Clock size={48} className="text-amber-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">A Receber</p>
           <h3 className="text-2xl font-bold text-amber-600">R$ {stats.totalPending.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10"><Bike size={48} className="text-red-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Pago aos Motoboys</p>
           <h3 className="text-2xl font-bold text-red-600 dark:text-red-400">R$ {stats.totalDriverPay.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10"><Wallet size={48} className="text-orange-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Despesas</p>
           <h3 className="text-2xl font-bold text-orange-600 dark:text-orange-400">R$ {stats.totalOperationalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10"><TrendingUp size={48} className="text-emerald-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Lucro Líquido</p>
@@ -237,7 +233,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
 
       {/* 2. GRÁFICOS E DETALHES */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart Section */}
         <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -264,7 +259,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
             </div>
         </div>
 
-        {/* Right Column: Methods & Expenses */}
         <div className="flex flex-col gap-6">
             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Receitas por Método</h2>
@@ -278,36 +272,25 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
                 </div>
             </div>
 
-            {/* DETALHAMENTO DE GASTOS - CORRIGIDO PARA MOSTRAR TODAS AS CATEGORIAS */}
             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex-1">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Detalhamento de Gastos</h2>
                 <div className="space-y-4">
-                    
-                    {/* Item Fixo: Motoboy (Sempre vem das corridas) */}
                     <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
                         <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Bike size={18}/> Motoboy</span>
                         <span className="font-semibold text-slate-800 dark:text-white">R$ {stats.totalDriverPay.toFixed(2)}</span>
                     </div>
-
-                    {/* Itens Dinâmicos: Despesas (Gasolina, Almoço, Outros) */}
-                    {/* GASOLINA */}
                     <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
                         <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Fuel size={18}/> Gasolina</span>
                         <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['GAS'] || 0).toFixed(2)}</span>
                     </div>
-
-                    {/* ALMOÇO */}
                     <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
                         <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Utensils size={18}/> Almoço</span>
                         <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['LUNCH'] || 0).toFixed(2)}</span>
                     </div>
-
-                    {/* OUTROS */}
                     <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
                         <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Wallet size={18}/> Outros</span>
                         <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['OTHER'] || 0).toFixed(2)}</span>
                     </div>
-
                 </div>
             </div>
         </div>
