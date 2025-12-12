@@ -581,7 +581,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 doc.line(marginX, currentY + 1, pageWidth - marginX, currentY + 1);
                 currentY += 5;
 
-                // Table
+                // --- TABELA ATUALIZADA COM AS NOVAS COLUNAS ---
                 const tableData = filteredServices.map(s => {
                     const baseCost = s.cost;
                     const waiting = s.waitingTime || 0;
@@ -593,21 +593,26 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                         s.requesterName.substring(0, 15), 
                         s.pickupAddresses[0] || '-',
                         s.deliveryAddresses[0] || '-',
-                        `R$ ${lineTotal.toFixed(2)}` // Summing everything here
+                        // Colunas financeiras detalhadas
+                        waiting > 0 ? `R$ ${waiting.toFixed(2)}` : '-',
+                        extra > 0 ? `R$ ${extra.toFixed(2)}` : '-',
+                        `R$ ${lineTotal.toFixed(2)}` // Soma total da linha
                     ];
                 });
 
                 autoTable(doc, {
                     startY: currentY,
-                    head: [['DATA', 'SOLICITANTE', 'ORIGEM (COLETA)', 'DESTINO (ENTREGA)', 'VALOR']],
+                    // Cabeçalho atualizado
+                    head: [['DATA', 'SOLICITANTE', 'ORIGEM', 'DESTINO', 'ESPERA', 'TAXA', 'TOTAL']],
                     body: tableData,
                     theme: 'plain', 
                     styles: {
-                        fontSize: 8,
+                        fontSize: 7, // Fonte levemente menor para caber tudo
                         cellPadding: 2,
                         textColor: 0,
                         lineColor: 200,
                         lineWidth: 0.1,
+                        valign: 'middle'
                     },
                     headStyles: {
                         fillColor: [240, 240, 240], 
@@ -616,12 +621,15 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                         lineWidth: 0.1,
                         lineColor: 200
                     },
+                    // Larguras ajustadas para A4
                     columnStyles: {
-                        0: { cellWidth: 15 },
-                        1: { cellWidth: 25 },
-                        2: { cellWidth: 60 },
-                        3: { cellWidth: 60 },
-                        4: { cellWidth: 20, halign: 'right' }
+                        0: { cellWidth: 12 }, // Data
+                        1: { cellWidth: 20 }, // Solicitante
+                        2: { cellWidth: 45 }, // Origem
+                        3: { cellWidth: 45 }, // Destino
+                        4: { cellWidth: 18, halign: 'right' }, // Espera
+                        5: { cellWidth: 18, halign: 'right' }, // Taxa
+                        6: { cellWidth: 20, halign: 'right' }  // Total
                     },
                     margin: { left: marginX, right: marginX }
                 });
@@ -638,7 +646,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 doc.setLineWidth(0.1);
                 doc.line(marginX, finalY, pageWidth - marginX, finalY);
 
-                // Calculate Grand Total (Base + Waiting + Extra)
+                // Cálculo do Total Geral (Já inclui Espera e Taxa Extra)
                 const totalValue = filteredServices.reduce((sum, s) => {
                     return sum + s.cost + (s.waitingTime || 0) + (s.extraFee || 0);
                 }, 0);
