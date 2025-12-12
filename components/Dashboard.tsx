@@ -37,11 +37,12 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
   const [driverFee, setDriverFee] = useState('');
   const [waitingTime, setWaitingTime] = useState(''); 
   const [extraFee, setExtraFee] = useState('');       
+
   const [requester, setRequester] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
   const [isPaid, setIsPaid] = useState(false);
 
-  // 1. Lógica de Filtros
+  // 1. Lógica de Filtros (Protegida)
   const { filteredServices, filteredExpenses, dateLabel } = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -67,15 +68,24 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
     }
 
     const filterByDate = (d: string) => { const ds = d.includes('T') ? d.split('T')[0] : d; return ds >= startStr && ds <= endStr; };
-    return { filteredServices: services.filter(s => filterByDate(s.date)), filteredExpenses: expenses.filter(e => filterByDate(e.date)), dateLabel: label };
+    
+    // Garante que services e expenses não sejam undefined
+    const safeServices = Array.isArray(services) ? services : [];
+    const safeExpenses = Array.isArray(expenses) ? expenses : [];
+
+    return { 
+        filteredServices: safeServices.filter(s => filterByDate(s.date)), 
+        filteredExpenses: safeExpenses.filter(e => filterByDate(e.date)), 
+        dateLabel: label 
+    };
   }, [services, expenses, timeFrame]);
   
-  // 2. Lógica de Estatísticas (Com proteção contra erros de dados)
+  // 2. Lógica de Estatísticas (Protegida)
   const stats = useMemo(() => {
     const safeServices = filteredServices || [];
     const safeExpenses = filteredExpenses || [];
 
-    // Usamos Number() para garantir que strings como "50.00" sejam somadas corretamente
+    // Usamos Number() para garantir que strings sejam somadas corretamente
     const totalRevenue = safeServices.reduce((sum, s) => sum + Number(s.cost || 0) + Number(s.waitingTime || 0), 0);
     const totalDriverPay = safeServices.reduce((sum, s) => sum + Number(s.driverFee || 0), 0);
     const totalPending = safeServices.filter(s => !s.paid).reduce((sum, s) => sum + Number(s.cost || 0) + Number(s.waitingTime || 0), 0);
@@ -88,7 +98,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
         return acc;
     }, { PIX: 0, CASH: 0, CARD: 0 } as Record<string, number>);
 
-    // Agrupamento correto de despesas
     const expensesByCat = safeExpenses.reduce((acc, curr) => {
         const cat = curr.category || 'OTHER';
         acc[cat] = (acc[cat] || 0) + Number(curr.amount || 0);
@@ -98,9 +107,12 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
     return { totalRevenue, totalPending, totalDriverPay, totalOperationalExpenses, netProfit, revenueByMethod, expensesByCat };
   }, [filteredServices, filteredExpenses]);
 
-  // 3. Lógica do Gráfico
+  // 3. Lógica do Gráfico (Protegida)
   const chartData = useMemo(() => {
     const dataMap = new Map<string, any>();
+    const safeServices = filteredServices || [];
+    const safeExpenses = filteredExpenses || [];
+
     const addToMap = (dateStr: string, rev: number, cost: number) => {
         if (!dateStr) return;
         const normDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
@@ -119,13 +131,13 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
         dataMap.set(key, entry);
     };
 
-    filteredServices.forEach(s => addToMap(s.date, Number(s.cost || 0) + Number(s.waitingTime || 0), Number(s.driverFee || 0)));
-    filteredExpenses.forEach(e => addToMap(e.date, 0, Number(e.amount || 0)));
+    safeServices.forEach(s => addToMap(s.date, Number(s.cost || 0) + Number(s.waitingTime || 0), Number(s.driverFee || 0)));
+    safeExpenses.forEach(e => addToMap(e.date, 0, Number(e.amount || 0)));
 
     return Array.from(dataMap.values()).map(e => ({ ...e, profit: e.revenue - e.cost })).sort((a, b) => a.sortKey - b.sortKey);
   }, [filteredServices, filteredExpenses, timeFrame]);
 
-  // --- Handlers do Modal ---
+  // --- Handlers ---
   const handleCreateService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClientId) return toast.error('Selecione um cliente.');
@@ -201,7 +213,7 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
         </div>
       </div>
       
-      {/* 1. CARDS DE RESUMO (Todos os 5 restaurados) */}
+      {/* 1. CARDS DE RESUMO (RESTAURADOS) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10"><DollarSign size={48} className="text-blue-600" /></div>
@@ -236,7 +248,7 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
         </div>
       </div>
 
-      {/* 2. GRÁFICOS E DETALHES (Restaurados) */}
+      {/* 2. GRÁFICOS E DETALHES */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Chart Section */}
         <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
@@ -408,6 +420,7 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
                         </div>
                     </div>
 
+                    {/* Pagamento */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
                         <div className="p-3 border border-slate-700 rounded-xl">
                             <label className="block text-sm font-bold text-slate-300 mb-1">Solicitante</label>
