@@ -6,9 +6,9 @@ import { TrendingUp, DollarSign, Bike, Wallet, Calendar, Fuel, Utensils, Plus, X
 import { toast } from 'sonner';
 
 interface DashboardProps {
-  clients: Client[];
-  services: ServiceRecord[];
-  expenses: ExpenseRecord[];
+  clients?: Client[]; // Opcional para evitar crash
+  services?: ServiceRecord[];
+  expenses?: ExpenseRecord[];
   currentUser: User;
   onRefresh: () => void;
 }
@@ -26,18 +26,15 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('MONTHLY');
   const [showNewServiceModal, setShowNewServiceModal] = useState(false);
   
-  // --- Estados do Formulário (PADRONIZADO) ---
+  // --- Estados do Formulário ---
   const [selectedClientId, setSelectedClientId] = useState('');
   const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
   const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
   const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
-  
-  // Financeiro
   const [cost, setCost] = useState('');       
   const [driverFee, setDriverFee] = useState('');
-  const [waitingTime, setWaitingTime] = useState(''); 
+  const [waitingTime, setWaitingTime] = useState('');
   const [extraFee, setExtraFee] = useState('');       
-
   const [requester, setRequester] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
   const [isPaid, setIsPaid] = useState(false);
@@ -68,37 +65,28 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
     }
 
     const filterByDate = (d: string) => { const ds = d.includes('T') ? d.split('T')[0] : d; return ds >= startStr && ds <= endStr; };
-    
-    // Garante que services e expenses não sejam undefined
-    const safeServices = Array.isArray(services) ? services : [];
-    const safeExpenses = Array.isArray(expenses) ? expenses : [];
-
     return { 
-        filteredServices: safeServices.filter(s => filterByDate(s.date)), 
-        filteredExpenses: safeExpenses.filter(e => filterByDate(e.date)), 
+        filteredServices: services.filter(s => filterByDate(s.date)), 
+        filteredExpenses: expenses.filter(e => filterByDate(e.date)), 
         dateLabel: label 
     };
   }, [services, expenses, timeFrame]);
   
-  // 2. Lógica de Estatísticas (Protegida)
+  // 2. Lógica de Estatísticas
   const stats = useMemo(() => {
-    const safeServices = filteredServices || [];
-    const safeExpenses = filteredExpenses || [];
-
-    // Usamos Number() para garantir que strings sejam somadas corretamente
-    const totalRevenue = safeServices.reduce((sum, s) => sum + Number(s.cost || 0) + Number(s.waitingTime || 0), 0);
-    const totalDriverPay = safeServices.reduce((sum, s) => sum + Number(s.driverFee || 0), 0);
-    const totalPending = safeServices.filter(s => !s.paid).reduce((sum, s) => sum + Number(s.cost || 0) + Number(s.waitingTime || 0), 0);
-    const totalOperationalExpenses = safeExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const totalRevenue = filteredServices.reduce((sum, s) => sum + Number(s.cost || 0) + Number(s.waitingTime || 0), 0);
+    const totalDriverPay = filteredServices.reduce((sum, s) => sum + Number(s.driverFee || 0), 0);
+    const totalPending = filteredServices.filter(s => !s.paid).reduce((sum, s) => sum + Number(s.cost || 0) + Number(s.waitingTime || 0), 0);
+    const totalOperationalExpenses = filteredExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
     const netProfit = totalRevenue - totalDriverPay - totalOperationalExpenses;
 
-    const revenueByMethod = safeServices.reduce((acc, curr) => {
+    const revenueByMethod = filteredServices.reduce((acc, curr) => {
         const method = curr.paymentMethod || 'PIX';
         acc[method] = (acc[method] || 0) + Number(curr.cost || 0) + Number(curr.waitingTime || 0);
         return acc;
     }, { PIX: 0, CASH: 0, CARD: 0 } as Record<string, number>);
 
-    const expensesByCat = safeExpenses.reduce((acc, curr) => {
+    const expensesByCat = filteredExpenses.reduce((acc, curr) => {
         const cat = curr.category || 'OTHER';
         acc[cat] = (acc[cat] || 0) + Number(curr.amount || 0);
         return acc;
@@ -107,12 +95,9 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
     return { totalRevenue, totalPending, totalDriverPay, totalOperationalExpenses, netProfit, revenueByMethod, expensesByCat };
   }, [filteredServices, filteredExpenses]);
 
-  // 3. Lógica do Gráfico (Protegida)
+  // 3. Lógica do Gráfico
   const chartData = useMemo(() => {
     const dataMap = new Map<string, any>();
-    const safeServices = filteredServices || [];
-    const safeExpenses = filteredExpenses || [];
-
     const addToMap = (dateStr: string, rev: number, cost: number) => {
         if (!dateStr) return;
         const normDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
@@ -131,8 +116,8 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
         dataMap.set(key, entry);
     };
 
-    safeServices.forEach(s => addToMap(s.date, Number(s.cost || 0) + Number(s.waitingTime || 0), Number(s.driverFee || 0)));
-    safeExpenses.forEach(e => addToMap(e.date, 0, Number(e.amount || 0)));
+    filteredServices.forEach(s => addToMap(s.date, Number(s.cost || 0) + Number(s.waitingTime || 0), Number(s.driverFee || 0)));
+    filteredExpenses.forEach(e => addToMap(e.date, 0, Number(e.amount || 0)));
 
     return Array.from(dataMap.values()).map(e => ({ ...e, profit: e.revenue - e.cost })).sort((a, b) => a.sortKey - b.sortKey);
   }, [filteredServices, filteredExpenses, timeFrame]);
@@ -141,17 +126,14 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
   const handleCreateService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClientId) return toast.error('Selecione um cliente.');
-    const cleanPickups = pickupAddresses.filter(a => a.trim() !== '');
-    const cleanDeliveries = deliveryAddresses.filter(a => a.trim() !== '');
-    if (cleanPickups.length === 0 || cleanDeliveries.length === 0) return toast.error('Insira endereços.');
 
     const newService: ServiceRecord = {
         id: crypto.randomUUID(),
         ownerId: currentUser.id,
         clientId: selectedClientId,
         date: serviceDate,
-        pickupAddresses: cleanPickups,
-        deliveryAddresses: cleanDeliveries,
+        pickupAddresses: pickupAddresses.filter(a=>a),
+        deliveryAddresses: deliveryAddresses.filter(a=>a),
         cost: parseFloat(cost) || 0,
         driverFee: parseFloat(driverFee) || 0,
         waitingTime: parseFloat(waitingTime) || 0,
@@ -186,7 +168,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
       else { const n = [...deliveryAddresses]; n[i] = v; setDeliveryAddresses(n); }
   };
 
-  // CÁLCULOS VISUAIS PARA O MODAL
   const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
   const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
 
@@ -213,32 +194,28 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
         </div>
       </div>
       
-      {/* 1. CARDS DE RESUMO (RESTAURADOS) */}
+      {/* 1. CARDS DE RESUMO */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10"><DollarSign size={48} className="text-blue-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Faturamento</p>
           <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-400">R$ {stats.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden border-l-4 border-l-amber-400">
           <div className="absolute top-0 right-0 p-4 opacity-10"><Clock size={48} className="text-amber-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">A Receber</p>
           <h3 className="text-2xl font-bold text-amber-600">R$ {stats.totalPending.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10"><Bike size={48} className="text-red-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Pago aos Motoboys</p>
           <h3 className="text-2xl font-bold text-red-600 dark:text-red-400">R$ {stats.totalDriverPay.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10"><Wallet size={48} className="text-orange-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Despesas</p>
           <h3 className="text-2xl font-bold text-orange-600 dark:text-orange-400">R$ {stats.totalOperationalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10"><TrendingUp size={48} className="text-emerald-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Lucro Líquido</p>
@@ -250,7 +227,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
 
       {/* 2. GRÁFICOS E DETALHES */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart Section */}
         <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -277,7 +253,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
             </div>
         </div>
 
-        {/* Right Column: Methods & Expenses */}
         <div className="flex flex-col gap-6">
             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Receitas por Método</h2>
@@ -315,7 +290,7 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
         </div>
       </div>
 
-      {/* --- MODAL NOVA CORRIDA PADRONIZADO (FORÇADO DARK MODE) --- */}
+      {/* --- MODAL NOVA CORRIDA PADRONIZADO --- */}
       {showNewServiceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4 animate-fade-in">
             <div className="bg-[#0f172a] w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden border border-slate-700 animate-slide-up max-h-[90vh] flex flex-col text-slate-100">
