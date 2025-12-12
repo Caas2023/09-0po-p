@@ -45,7 +45,15 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
     const invoiceRef = useRef<HTMLDivElement>(null);
     const [isSharing, setIsSharing] = useState(false);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-    const myCompany = { name: currentUser.companyName || "LogiTrack", cnpj: currentUser.companyCnpj, address: currentUser.companyAddress, phone: currentUser.phone, email: currentUser.email };
+
+    const myCompany = {
+        name: currentUser.companyName || currentUser.name || "LogiTrack Express",
+        cnpj: currentUser.companyCnpj || "",
+        address: currentUser.companyAddress || "",
+        phone: currentUser.phone || "",
+        email: currentUser.email,
+        website: ""
+    };
 
     const handleDownloadPDF = async () => {
         if (!invoiceRef.current) return;
@@ -59,20 +67,20 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
             const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
             pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
             pdf.save(`Ordem_${service.id.slice(0, 8)}.pdf`);
-        } catch(e) { console.error(e); } finally { setIsGeneratingPdf(false); }
+        } catch (e) { console.error(e); } finally { setIsGeneratingPdf(false); }
     };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
-             <div className="bg-white p-4 rounded-xl shadow-xl">
-                 <div ref={invoiceRef} className="p-8 bg-white text-black min-w-[500px]">
-                     <h1 className="text-xl font-bold">{myCompany.name}</h1>
-                     <p>Ordem #{service.id.slice(0,8)}</p>
-                     <p>Total: R$ {(service.cost + (service.waitingTime||0) + (service.extraFee||0)).toFixed(2)}</p>
-                 </div>
-                 <button onClick={handleDownloadPDF} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded">Baixar PDF</button>
-                 <button onClick={onClose} className="mt-4 ml-2 bg-gray-200 px-4 py-2 rounded">Fechar</button>
-             </div>
+            <div className="bg-white p-4 rounded-xl shadow-xl">
+                <div ref={invoiceRef} className="p-8 bg-white text-black min-w-[500px]">
+                    <h1 className="text-xl font-bold">{myCompany.name}</h1>
+                    <p>Ordem #{service.id.slice(0, 8)}</p>
+                    <p>Total: R$ {(service.cost + (service.waitingTime || 0) + (service.extraFee || 0)).toFixed(2)}</p>
+                </div>
+                <button onClick={handleDownloadPDF} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded">Baixar PDF</button>
+                <button onClick={onClose} className="mt-4 ml-2 bg-gray-200 px-4 py-2 rounded">Fechar</button>
+            </div>
         </div>
     );
 };
@@ -83,8 +91,8 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     useEffect(() => {
         getServicesByClient(client.id).then(setServices);
     }, [client.id]);
-    const [activeTab, setActiveTab] = useState<'services' | 'financial'>('services');
 
+    const [activeTab, setActiveTab] = useState<'services' | 'financial'>('services');
     const [showForm, setShowForm] = useState(false);
     const [viewingService, setViewingService] = useState<ServiceRecord | null>(null);
     const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
@@ -95,5 +103,322 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     const [serviceDate, setServiceDate] = useState(getLocalDateStr(new Date()));
     const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
     const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
-    const [cost, setCost] = useState(''); 
-    const
+    const [cost, setCost] = useState('');
+    const [driverFee, setDriverFee] = useState('');
+    const [waitingTime, setWaitingTime] = useState('');
+    const [extraFee, setExtraFee] = useState('');
+    const [requester, setRequester] = useState('');
+    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
+    const [isPaid, setIsPaid] = useState(false);
+
+    // Filter & Select
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [statusFilter, setStatusFilter] = useState<'ALL' | 'PAID' | 'PENDING'>('ALL');
+
+    const handleAddAddress = (t: 'pickup' | 'delivery') => t === 'pickup' ? setPickupAddresses([...pickupAddresses, '']) : setDeliveryAddresses([...deliveryAddresses, '']);
+    const handleRemoveAddress = (t: 'pickup' | 'delivery', i: number) => {
+        if (t === 'pickup' && pickupAddresses.length > 1) setPickupAddresses(pickupAddresses.filter((_, idx) => idx !== i));
+        else if (t === 'delivery' && deliveryAddresses.length > 1) setDeliveryAddresses(deliveryAddresses.filter((_, idx) => idx !== i));
+    };
+    const handleAddressChange = (t: 'pickup' | 'delivery', i: number, v: string) => {
+        if (t === 'pickup') { const n = [...pickupAddresses]; n[i] = v; setPickupAddresses(n); }
+        else { const n = [...deliveryAddresses]; n[i] = v; setDeliveryAddresses(n); }
+    };
+
+    const resetForm = () => {
+        setPickupAddresses(['']); setDeliveryAddresses(['']); setCost(''); setDriverFee(''); setWaitingTime(''); setExtraFee(''); setRequester(''); setPaymentMethod('PIX'); setIsPaid(false); setServiceDate(getLocalDateStr(new Date())); setEditingServiceId(null); setShowForm(false);
+    };
+
+    const handleEditService = (service: ServiceRecord) => {
+        setEditingServiceId(service.id);
+        setServiceDate(service.date.includes('T') ? service.date.split('T')[0] : service.date);
+        setPickupAddresses([...service.pickupAddresses]);
+        setDeliveryAddresses([...service.deliveryAddresses]);
+        setCost(service.cost.toString());
+        setDriverFee(service.driverFee.toString());
+        setWaitingTime(service.waitingTime?.toString() || '');
+        setExtraFee(service.extraFee?.toString() || '');
+        setRequester(service.requesterName);
+        setPaymentMethod(service.paymentMethod || 'PIX');
+        setIsPaid(service.paid);
+        setShowForm(true);
+        setActiveTab('services');
+    };
+
+    const handleSaveService = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const cleanPickups = pickupAddresses.filter(a => a.trim() !== '');
+        const cleanDeliveries = deliveryAddresses.filter(a => a.trim() !== '');
+        if (cleanPickups.length === 0 || cleanDeliveries.length === 0) return toast.error("Preencha os endereços");
+
+        const originalService = services.find(s => s.id === editingServiceId);
+        const serviceData: ServiceRecord = {
+            id: editingServiceId || crypto.randomUUID(),
+            ownerId: '', clientId: client.id,
+            pickupAddresses: cleanPickups, deliveryAddresses: cleanDeliveries,
+            cost: parseFloat(cost) || 0, driverFee: parseFloat(driverFee) || 0,
+            waitingTime: parseFloat(waitingTime) || 0, extraFee: parseFloat(extraFee) || 0,
+            requesterName: requester, date: serviceDate,
+            paid: isPaid, paymentMethod: paymentMethod,
+            status: originalService ? originalService.status : 'PENDING'
+        };
+
+        if (editingServiceId) await updateService(serviceData);
+        else await saveService(serviceData);
+
+        const updatedList = await getServicesByClient(client.id);
+        setServices(updatedList);
+        resetForm();
+        toast.success(editingServiceId ? 'Atualizado!' : 'Criado!');
+    };
+
+    const confirmDeleteService = async () => {
+        if (!serviceToDelete) return;
+        setIsDeleting(true);
+        try {
+            await deleteService(serviceToDelete.id);
+            toast.success('Removido!');
+            setServices(await getServicesByClient(client.id));
+        } catch (e) { toast.error('Erro ao remover'); }
+        finally { setIsDeleting(false); setServiceToDelete(null); }
+    };
+
+    const toggleSelectAll = () => setSelectedIds(selectedIds.size === services.length ? new Set() : new Set(services.map(s => s.id)));
+    const toggleSelectRow = (id: string) => { const n = new Set(selectedIds); if (n.has(id)) n.delete(id); else n.add(id); setSelectedIds(n); };
+
+    // Filter Logic
+    const getFilteredServices = () => {
+        let filtered = services || []; // PROTEÇÃO CONTRA UNDEFINED
+        if (startDate && endDate) {
+            filtered = filtered.filter(s => {
+                const dateStr = s.date.includes('T') ? s.date.split('T')[0] : s.date;
+                return dateStr >= startDate && dateStr <= endDate;
+            });
+        }
+        if (statusFilter === 'PAID') filtered = filtered.filter(s => s.paid === true);
+        else if (statusFilter === 'PENDING') filtered = filtered.filter(s => s.paid === false);
+        return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    };
+    const filteredServices = getFilteredServices();
+    const isAllSelected = filteredServices.length > 0 && selectedIds.size === filteredServices.length;
+
+    const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
+    const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
+
+    return (
+        <div className="space-y-6 animate-fade-in relative">
+            {viewingService && <ServiceDocumentModal service={viewingService} client={client} currentUser={currentUser} onClose={() => setViewingService(null)} />}
+
+            {serviceToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-2xl max-w-sm text-center">
+                        <h3 className="font-bold text-lg mb-2 dark:text-white">Excluir Serviço?</h3>
+                        <div className="flex gap-2 justify-center mt-4">
+                            <button onClick={() => setServiceToDelete(null)} className="px-4 py-2 border rounded-lg dark:text-white">Cancelar</button>
+                            <button onClick={confirmDeleteService} className="px-4 py-2 bg-red-600 text-white rounded-lg">Excluir</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                    <button onClick={onBack} className="flex items-center text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-medium gap-1"><ArrowLeft size={20} /> Voltar</button>
+                </div>
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700">
+                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{client.name}</h1>
+                    <div className="flex gap-4 text-sm text-slate-500 dark:text-slate-400">
+                        {client.email && <span>{client.email}</span>}
+                        {client.phone && <span>{client.phone}</span>}
+                    </div>
+                    <div className="flex gap-6 mt-6 border-b border-slate-200 dark:border-slate-700">
+                        <button onClick={() => setActiveTab('services')} className={`pb-3 text-sm font-bold ${activeTab === 'services' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}>Serviços</button>
+                        <button onClick={() => setActiveTab('financial')} className={`pb-3 text-sm font-bold ${activeTab === 'financial' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-500'}`}>Financeiro</button>
+                    </div>
+                </div>
+            </div>
+
+            {activeTab === 'services' && (
+                <>
+                    <div className="flex justify-end mb-4">
+                        <button onClick={() => { if (showForm) resetForm(); else setShowForm(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">
+                            {showForm ? <X size={18} /> : <Plus size={18} />} {showForm ? 'Cancelar' : 'Nova Corrida'}
+                        </button>
+                    </div>
+
+                    {showForm && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4 animate-fade-in">
+                            <div className="bg-[#0f172a] w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden border border-slate-700 animate-slide-up max-h-[90vh] flex flex-col text-slate-100">
+                                <div className="flex justify-between items-center p-4 border-b border-slate-700 bg-[#1e293b]">
+                                    <h3 className="text-lg font-bold text-white flex items-center gap-2"><Bike size={20} className="text-blue-500" /> {editingServiceId ? 'Editar Corrida' : 'Registrar Nova Corrida'}</h3>
+                                    <button onClick={resetForm} className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-full transition-colors"><X size={20} /></button>
+                                </div>
+
+                                <form onSubmit={handleSaveService} className="overflow-y-auto p-6 space-y-6 flex-1 bg-[#0f172a]">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="p-3 border border-slate-700 rounded-lg bg-[#1e293b]">
+                                            <label className="block text-xs font-bold text-slate-400 mb-1">CLIENTE</label>
+                                            <div className="font-bold text-white">{client.name}</div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-300 mb-1">Data *</label>
+                                            <div className="relative">
+                                                <Calendar size={18} className="absolute left-3 top-3 text-slate-500" />
+                                                <input required type="date" className="w-full pl-10 p-3 border border-slate-700 rounded-lg bg-[#1e293b] text-white focus:ring-2 focus:ring-blue-600 outline-none" value={serviceDate} onChange={e => setServiceDate(e.target.value)} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-3 p-4 bg-blue-900/10 rounded-xl border border-blue-900/30">
+                                            <h3 className="font-bold text-blue-400 flex items-center gap-2 mb-2 text-sm">Coleta</h3>
+                                            {pickupAddresses.map((addr, idx) => (
+                                                <div key={`p-${idx}`} className="flex gap-2 relative">
+                                                    <MapPin size={16} className="absolute left-3 top-3 text-blue-500" />
+                                                    <input required className="w-full pl-9 p-2.5 border border-slate-700 rounded-lg bg-[#1e293b] text-white text-sm focus:border-blue-500 outline-none" value={addr} onChange={e => handleAddressChange('pickup', idx, e.target.value)} placeholder="Endereço de retirada" />
+                                                    {pickupAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('pickup', idx)} className="p-2 text-red-400 hover:bg-slate-700 rounded-lg"><X size={16} /></button>}
+                                                </div>
+                                            ))}
+                                            <button type="button" onClick={() => handleAddAddress('pickup')} className="text-xs text-blue-400 font-bold hover:underline flex items-center gap-1"><Plus size={14} /> Adicionar Parada</button>
+                                        </div>
+                                        <div className="space-y-3 p-4 bg-emerald-900/10 rounded-xl border border-emerald-900/30">
+                                            <h3 className="font-bold text-emerald-400 flex items-center gap-2 mb-2 text-sm">Entrega</h3>
+                                            {deliveryAddresses.map((addr, idx) => (
+                                                <div key={`d-${idx}`} className="flex gap-2 relative">
+                                                    <MapPin size={16} className="absolute left-3 top-3 text-emerald-500" />
+                                                    <input required className="w-full pl-9 p-2.5 border border-slate-700 rounded-lg bg-[#1e293b] text-white text-sm focus:border-emerald-500 outline-none" value={addr} onChange={e => handleAddressChange('delivery', idx, e.target.value)} placeholder="Endereço de destino" />
+                                                    {deliveryAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('delivery', idx)} className="p-2 text-red-400 hover:bg-slate-700 rounded-lg"><X size={16} /></button>}
+                                                </div>
+                                            ))}
+                                            <button type="button" onClick={() => handleAddAddress('delivery')} className="text-xs text-emerald-400 font-bold hover:underline flex items-center gap-1"><Plus size={14} /> Adicionar Parada</button>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-4 border-t border-slate-700">
+                                        <h3 className="font-bold text-slate-300 mb-4 text-sm">Financeiro e Adicionais</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-emerald-400 mb-1">Valor da Corrida (R$)</label>
+                                                <div className="relative">
+                                                    <DollarSign size={16} className="absolute left-3 top-3 text-emerald-500" />
+                                                    <input required type="number" min="0" step="0.01" className="w-full pl-9 p-2.5 border border-slate-700 rounded-lg bg-[#1e293b] text-lg font-bold text-emerald-400 focus:border-emerald-500 outline-none" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00" />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-red-400 mb-1">Pago ao Motoboy (R$)</label>
+                                                <div className="relative">
+                                                    <Bike size={16} className="absolute left-3 top-3 text-red-500" />
+                                                    <input required type="number" min="0" step="0.01" className="w-full pl-9 p-2.5 border border-slate-700 rounded-lg bg-[#1e293b] text-lg font-bold text-red-400 focus:border-red-500 outline-none" value={driverFee} onChange={e => setDriverFee(e.target.value)} placeholder="0.00" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">VALOR ESPERA (R$)</label>
+                                                <div className="relative">
+                                                    <Timer size={14} className="absolute left-3 top-3 text-slate-500" />
+                                                    <input type="number" step="0.01" className="w-full pl-9 p-2.5 border border-slate-700 rounded-lg bg-[#1e293b] text-sm text-white focus:border-blue-500 outline-none" value={waitingTime} onChange={e => setWaitingTime(e.target.value)} placeholder="0.00" />
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 mt-1">Soma no total do sistema</p>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">TAXA EXTRA (R$)</label>
+                                                <div className="relative">
+                                                    <DollarSign size={14} className="absolute left-3 top-3 text-slate-500" />
+                                                    <input type="number" step="0.01" className="w-full pl-9 p-2.5 border border-slate-700 rounded-lg bg-[#1e293b] text-sm text-white focus:border-blue-500 outline-none" value={extraFee} onChange={e => setExtraFee(e.target.value)} placeholder="0.00" />
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 mt-1">Soma apenas no PDF do Cliente</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-4 bg-[#1e293b] rounded-lg flex justify-between items-center border border-slate-700 shadow-inner">
+                                            <div>
+                                                <span className="block text-[10px] font-bold text-slate-400 uppercase">TOTAL INTERNO (BASE + ESPERA)</span>
+                                                <span className="text-xl font-bold text-white">R$ {currentTotal.toFixed(2)}</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="block text-[10px] font-bold text-slate-500 uppercase">TOTAL NO PDF CLIENTE (+ TAXA)</span>
+                                                <span className="text-sm font-bold text-slate-300">R$ {pdfTotal.toFixed(2)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Pagamento */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
+                                        <div className="p-3 border border-slate-700 rounded-xl">
+                                            <label className="block text-sm font-bold text-slate-300 mb-1">Solicitante</label>
+                                            <input required className="w-full p-2.5 border border-slate-700 rounded-lg bg-[#1e293b] text-white focus:ring-2 focus:ring-blue-600 outline-none" value={requester} onChange={e => setRequester(e.target.value)} placeholder="Nome" />
+                                        </div>
+                                        <div className="p-3 border border-slate-700 rounded-xl">
+                                            <label className="block text-xs font-bold text-slate-300 mb-2">Forma de Pagamento</label>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {(['PIX', 'CASH', 'CARD'] as PaymentMethod[]).map(m => (
+                                                    <button key={m} type="button" onClick={() => setPaymentMethod(m)} className={`flex items-center justify-center py-2 rounded-lg border text-xs font-bold ${paymentMethod === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-transparent border-slate-600 text-slate-400 hover:border-slate-400'}`}>
+                                                        {m === 'PIX' ? 'Pix' : m === 'CASH' ? 'Din' : 'Card'}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 border border-slate-700 rounded-xl flex items-center justify-center bg-[#1e293b]">
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${isPaid ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'}`}>
+                                                {isPaid && <CheckCircle size={14} className="text-white" />}
+                                            </div>
+                                            <input type="checkbox" className="hidden" checked={isPaid} onChange={e => setIsPaid(e.target.checked)} />
+                                            <span className="text-sm font-bold text-slate-300">Status do Pagamento: {isPaid ? 'Pago' : 'Pendente'}</span>
+                                        </label>
+                                    </div>
+                                </form>
+
+                                <div className="p-4 border-t border-slate-700 bg-[#1e293b] flex justify-end gap-3">
+                                    <button type="button" onClick={resetForm} className="px-6 py-2.5 text-slate-400 font-bold hover:text-white transition-colors">Cancelar</button>
+                                    <button type="submit" onClick={handleSaveService} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg flex items-center gap-2"><CheckCircle size={18} /> Registrar Corrida</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="mt-6 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                                    <tr>
+                                        <th className="p-4 w-12"><button onClick={toggleSelectAll}>{isAllSelected ? <CheckSquare size={20} className="text-blue-600 dark:text-blue-400" /> : <Square size={20} />}</button></th>
+                                        <th className="p-4 font-bold">Data</th>
+                                        <th className="p-4 font-bold">Rota</th>
+                                        <th className="p-4 font-bold">Solicitante</th>
+                                        <th className="p-4 font-bold text-right">Cobrado (Int)</th>
+                                        <th className="p-4 font-bold text-center">Status</th>
+                                        <th className="p-4 text-center">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                                    {filteredServices.map(s => (
+                                        <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-700">
+                                            <td className="p-4"><button onClick={() => toggleSelectRow(s.id)}>{selectedIds.has(s.id) ? <CheckSquare size={20} className="text-blue-600" /> : <Square size={20} />}</button></td>
+                                            <td className="p-4">{new Date(s.date).toLocaleDateString()}</td>
+                                            <td className="p-4 max-w-xs truncate">{s.pickupAddresses[0]} {'->'} {s.deliveryAddresses[0]}</td>
+                                            <td className="p-4">{s.requesterName}</td>
+                                            <td className="p-4 text-right font-bold text-emerald-600">R$ {(Number(s.cost || 0) + Number(s.waitingTime || 0)).toFixed(2)}</td>
+                                            <td className="p-4 text-center">{s.paid ? 'Pago' : 'Pendente'}</td>
+                                            <td className="p-4 text-center flex justify-center gap-2">
+                                                <button onClick={() => setViewingService(s)} className="text-slate-500 hover:text-blue-600"><FileText size={16} /></button>
+                                                <button onClick={() => handleEditService(s)} className="text-blue-500"><Pencil size={16} /></button>
+                                                <button onClick={() => setServiceToDelete(s)} className="text-red-500"><Trash2 size={16} /></button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
