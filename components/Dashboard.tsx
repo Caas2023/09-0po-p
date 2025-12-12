@@ -26,23 +26,20 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('MONTHLY');
   const [showNewServiceModal, setShowNewServiceModal] = useState(false);
   
-  // --- New Service Form State (PADRONIZADO) ---
+  // --- New Service Form State ---
   const [selectedClientId, setSelectedClientId] = useState('');
   const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
   const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
   const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
-  
-  // Financeiro
   const [cost, setCost] = useState('');       
   const [driverFee, setDriverFee] = useState('');
-  const [waitingTime, setWaitingTime] = useState(''); // Espera (R$)
-  const [extraFee, setExtraFee] = useState('');       // Taxa Extra (R$)
-
+  const [waitingTime, setWaitingTime] = useState('');
+  const [extraFee, setExtraFee] = useState('');
   const [requester, setRequester] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
   const [isPaid, setIsPaid] = useState(false);
 
-  // 1. Filter Data
+  // Lógica de Filtros e Gráficos
   const { filteredServices, filteredExpenses, dateLabel } = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -71,24 +68,20 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
     return { filteredServices: services.filter(s => filterByDate(s.date)), filteredExpenses: expenses.filter(e => filterByDate(e.date)), dateLabel: label };
   }, [services, expenses, timeFrame]);
   
-  // 2. Calculate Stats
   const stats = useMemo(() => {
-    const safeServices = filteredServices || [];
-    const safeExpenses = filteredExpenses || [];
-
-    const totalRevenue = safeServices.reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
-    const totalDriverPay = safeServices.reduce((sum, s) => sum + (s.driverFee || 0), 0);
-    const totalPending = safeServices.filter(s => !s.paid).reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
-    const totalOperationalExpenses = safeExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalRevenue = filteredServices.reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
+    const totalDriverPay = filteredServices.reduce((sum, s) => sum + (s.driverFee || 0), 0);
+    const totalPending = filteredServices.filter(s => !s.paid).reduce((sum, s) => sum + s.cost + (s.waitingTime || 0), 0);
+    const totalOperationalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
     const netProfit = totalRevenue - totalDriverPay - totalOperationalExpenses;
 
-    const revenueByMethod = safeServices.reduce((acc, curr) => {
+    const revenueByMethod = filteredServices.reduce((acc, curr) => {
         const method = curr.paymentMethod || 'PIX';
         acc[method] = (acc[method] || 0) + curr.cost + (curr.waitingTime || 0);
         return acc;
     }, { PIX: 0, CASH: 0, CARD: 0 } as Record<string, number>);
 
-    const expensesByCat = safeExpenses.reduce((acc, curr) => {
+    const expensesByCat = filteredExpenses.reduce((acc, curr) => {
         acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
         return acc;
     }, {} as Record<string, number>);
@@ -96,7 +89,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
     return { totalRevenue, totalPending, totalDriverPay, totalOperationalExpenses, netProfit, revenueByMethod, expensesByCat };
   }, [filteredServices, filteredExpenses]);
 
-  // 3. Chart Data
   const chartData = useMemo(() => {
     const dataMap = new Map<string, any>();
     const addToMap = (dateStr: string, rev: number, cost: number) => {
@@ -149,7 +141,7 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
     };
 
     await saveService(newService);
-    toast.success('Corrida registrada com sucesso!');
+    toast.success('Corrida registrada!');
     resetForm();
     onRefresh();
   };
@@ -172,7 +164,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
       else { const n = [...deliveryAddresses]; n[i] = v; setDeliveryAddresses(n); }
   };
 
-  // CÁLCULO PADRONIZADO PARA O BOX DE TOTAIS DO MODAL
   const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
   const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
 
@@ -199,34 +190,25 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
         </div>
       </div>
       
-      {/* 1. CARDS DE RESUMO (RESTAURADOS) */}
+      {/* 1. CARDS DE RESUMO */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10"><DollarSign size={48} className="text-blue-600" /></div>
-          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Faturamento ({dateLabel})</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Faturamento</p>
           <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-400">R$ {stats.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden border-l-4 border-l-amber-400">
-          <div className="absolute top-0 right-0 p-4 opacity-10"><Clock size={48} className="text-amber-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">A Receber</p>
           <h3 className="text-2xl font-bold text-amber-600">R$ {stats.totalPending.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10"><Bike size={48} className="text-red-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Pago aos Motoboys</p>
           <h3 className="text-2xl font-bold text-red-600 dark:text-red-400">R$ {stats.totalDriverPay.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10"><Wallet size={48} className="text-orange-600" /></div>
-          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Despesas (Gas/Almoço)</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Despesas</p>
           <h3 className="text-2xl font-bold text-orange-600 dark:text-orange-400">R$ {stats.totalOperationalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
-
          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10"><TrendingUp size={48} className="text-emerald-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Lucro Líquido</p>
           <h3 className={`text-2xl font-bold ${stats.netProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
               R$ {stats.netProfit.toLocaleString(undefined, {minimumFractionDigits: 2})}
@@ -234,15 +216,10 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
         </div>
       </div>
 
-      {/* 2. GRÁFICOS E DETALHES (RESTAURADOS) */}
+      {/* 2. GRÁFICOS E DETALHES */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart Section */}
         <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                    <TrendingUp className="text-slate-500" size={20} /> Evolução: {dateLabel}
-                </h2>
-            </div>
+            <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-6"><TrendingUp className="text-slate-500" size={20} /> Evolução: {dateLabel}</h2>
             <div className="h-80 w-full">
             {chartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -263,7 +240,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
             </div>
         </div>
 
-        {/* Right Column: Methods & Expenses */}
         <div className="flex flex-col gap-6">
             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Receitas por Método</h2>
@@ -287,14 +263,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
                     <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
                         <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Fuel size={18}/> Gasolina</span>
                         <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['GAS'] || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                        <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Utensils size={18}/> Almoço</span>
-                        <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['LUNCH'] || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                        <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Wallet size={18}/> Outros</span>
-                        <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['OTHER'] || 0).toFixed(2)}</span>
                     </div>
                 </div>
             </div>
@@ -331,7 +299,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
                         </div>
                     </div>
                     
-                    {/* Endereços */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-3 p-4 bg-blue-900/10 rounded-xl border border-blue-900/30">
                             <h3 className="font-bold text-blue-400 flex items-center gap-2 mb-2 text-sm"><div className="w-2 h-2 rounded-full bg-blue-500"></div> Coleta</h3>
@@ -357,7 +324,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
                         </div>
                     </div>
 
-                    {/* Financeiro Completo */}
                     <div className="pt-4 border-t border-slate-700">
                         <h3 className="font-bold text-slate-300 mb-4 text-sm">Financeiro e Adicionais</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -408,7 +374,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
                         </div>
                     </div>
 
-                    {/* Pagamento */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
                         <div className="p-3 border border-slate-700 rounded-xl">
                             <label className="block text-xs font-bold text-slate-300 mb-2">Forma de Pagamento</label>
