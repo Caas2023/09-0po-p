@@ -10,18 +10,18 @@ interface NewOrderProps {
     currentUserId?: string;
 }
 
-export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel }) => {
+export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel, currentUserId }) => {
     const [selectedClientId, setSelectedClientId] = useState<string>('');
     const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
     const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
     const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
-    
+
     // Financeiro
     const [cost, setCost] = useState('');
     const [driverFee, setDriverFee] = useState('');
     const [waitingTime, setWaitingTime] = useState('');
     const [extraFee, setExtraFee] = useState('');
-    
+
     const [requester, setRequester] = useState('');
     const [paid, setPaid] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
@@ -46,7 +46,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
 
         const serviceData: ServiceRecord = {
             id: crypto.randomUUID(),
-            ownerId: '', 
+            ownerId: currentUserId || '',
             clientId: selectedClientId,
             pickupAddresses: cleanPickups,
             deliveryAddresses: cleanDeliveries,
@@ -147,7 +147,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                     {/* Financeiro Completo */}
                     <div className="pt-4 border-t border-slate-700">
                         <h3 className="font-bold text-white mb-4 text-sm">Financeiro e Adicionais</h3>
-                        
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                             <div>
                                 <label className="block text-xs font-bold text-emerald-400 mb-1">Valor da Corrida (R$)</label>
