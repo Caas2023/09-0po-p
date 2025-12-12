@@ -26,7 +26,7 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('MONTHLY');
   const [showNewServiceModal, setShowNewServiceModal] = useState(false);
   
-  // --- New Service Form State ---
+  // --- New Service Form State (PADRONIZADO) ---
   const [selectedClientId, setSelectedClientId] = useState('');
   const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
   const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
@@ -35,8 +35,8 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
   // Financeiro
   const [cost, setCost] = useState('');       
   const [driverFee, setDriverFee] = useState('');
-  const [waitingTime, setWaitingTime] = useState('');
-  const [extraFee, setExtraFee] = useState('');       
+  const [waitingTime, setWaitingTime] = useState(''); // Espera (R$)
+  const [extraFee, setExtraFee] = useState('');       // Taxa Extra (R$)
 
   const [requester, setRequester] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
@@ -149,7 +149,7 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
     };
 
     await saveService(newService);
-    toast.success('Corrida registrada!');
+    toast.success('Corrida registrada com sucesso!');
     resetForm();
     onRefresh();
   };
@@ -172,6 +172,7 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
       else { const n = [...deliveryAddresses]; n[i] = v; setDeliveryAddresses(n); }
   };
 
+  // CÁLCULO PADRONIZADO PARA O BOX DE TOTAIS DO MODAL
   const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
   const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
 
@@ -201,22 +202,31 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
       {/* 1. CARDS DE RESUMO (RESTAURADOS) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Faturamento</p>
+          <div className="absolute top-0 right-0 p-4 opacity-10"><DollarSign size={48} className="text-blue-600" /></div>
+          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Faturamento ({dateLabel})</p>
           <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-400">R$ {stats.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
+
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden border-l-4 border-l-amber-400">
+          <div className="absolute top-0 right-0 p-4 opacity-10"><Clock size={48} className="text-amber-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">A Receber</p>
           <h3 className="text-2xl font-bold text-amber-600">R$ {stats.totalPending.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
+
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10"><Bike size={48} className="text-red-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Pago aos Motoboys</p>
           <h3 className="text-2xl font-bold text-red-600 dark:text-red-400">R$ {stats.totalDriverPay.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
+
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
-          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Despesas</p>
+          <div className="absolute top-0 right-0 p-4 opacity-10"><Wallet size={48} className="text-orange-600" /></div>
+          <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Despesas (Gas/Almoço)</p>
           <h3 className="text-2xl font-bold text-orange-600 dark:text-orange-400">R$ {stats.totalOperationalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}</h3>
         </div>
+
          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10"><TrendingUp size={48} className="text-emerald-600" /></div>
           <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Lucro Líquido</p>
           <h3 className={`text-2xl font-bold ${stats.netProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
               R$ {stats.netProfit.toLocaleString(undefined, {minimumFractionDigits: 2})}
@@ -226,6 +236,7 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
 
       {/* 2. GRÁFICOS E DETALHES (RESTAURADOS) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Chart Section */}
         <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -252,6 +263,7 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
             </div>
         </div>
 
+        {/* Right Column: Methods & Expenses */}
         <div className="flex flex-col gap-6">
             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Receitas por Método</h2>
@@ -264,8 +276,8 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
                     ))}
                 </div>
             </div>
-            {/* Detalhes de Gastos */}
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex-1">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Detalhamento de Gastos</h2>
                 <div className="space-y-4">
                     <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
@@ -275,6 +287,14 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
                     <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
                         <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Fuel size={18}/> Gasolina</span>
                         <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['GAS'] || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                        <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Utensils size={18}/> Almoço</span>
+                        <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['LUNCH'] || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                        <span className="text-slate-700 dark:text-slate-300 font-medium flex gap-2"><Wallet size={18}/> Outros</span>
+                        <span className="font-semibold text-slate-800 dark:text-white">R$ {(stats.expensesByCat['OTHER'] || 0).toFixed(2)}</span>
                     </div>
                 </div>
             </div>
@@ -311,6 +331,7 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
                         </div>
                     </div>
                     
+                    {/* Endereços */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-3 p-4 bg-blue-900/10 rounded-xl border border-blue-900/30">
                             <h3 className="font-bold text-blue-400 flex items-center gap-2 mb-2 text-sm"><div className="w-2 h-2 rounded-full bg-blue-500"></div> Coleta</h3>
@@ -336,7 +357,7 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
                         </div>
                     </div>
 
-                    {/* Financeiro - Layout Corrigido */}
+                    {/* Financeiro Completo */}
                     <div className="pt-4 border-t border-slate-700">
                         <h3 className="font-bold text-slate-300 mb-4 text-sm">Financeiro e Adicionais</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -390,10 +411,6 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
                     {/* Pagamento */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
                         <div className="p-3 border border-slate-700 rounded-xl">
-                            <label className="block text-sm font-bold text-slate-300 mb-1">Solicitante</label>
-                            <input required className="w-full p-2.5 border border-slate-700 rounded-lg bg-[#1e293b] text-white focus:ring-2 focus:ring-blue-600 outline-none" value={requester} onChange={e => setRequester(e.target.value)} placeholder="Nome" />
-                        </div>
-                        <div className="p-3 border border-slate-700 rounded-xl">
                             <label className="block text-xs font-bold text-slate-300 mb-2">Forma de Pagamento</label>
                             <div className="grid grid-cols-3 gap-2">
                                 {(['PIX', 'CASH', 'CARD'] as PaymentMethod[]).map(m => (
@@ -403,18 +420,18 @@ export function Dashboard({ clients = [], services = [], expenses = [], currentU
                                 ))}
                             </div>
                         </div>
-                    </div>
-                    
-                    <div className="p-4 border border-slate-700 rounded-xl flex items-center justify-center bg-[#1e293b]">
-                        <label className="flex items-center gap-3 cursor-pointer">
-                            <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${isPaid ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'}`}>
-                                {isPaid && <CheckCircle size={14} className="text-white" />}
-                            </div>
-                            <input type="checkbox" className="hidden" checked={isPaid} onChange={e => setIsPaid(e.target.checked)} />
-                            <span className="text-sm font-bold text-slate-300">Status do Pagamento: {isPaid ? 'Pago' : 'Pendente'}</span>
-                        </label>
+                        <div className="p-4 border border-slate-700 rounded-xl flex items-center justify-center bg-[#1e293b]">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${isPaid ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'}`}>
+                                    {isPaid && <CheckCircle size={14} className="text-white" />}
+                                </div>
+                                <input type="checkbox" className="hidden" checked={isPaid} onChange={e => setIsPaid(e.target.checked)} />
+                                <span className="text-sm font-bold text-slate-300">Status do Pagamento: {isPaid ? 'Pago' : 'Pendente'}</span>
+                            </label>
+                        </div>
                     </div>
                 </form>
+                
                 <div className="p-4 border-t border-slate-700 bg-[#1e293b] flex justify-end gap-3">
                     <button type="button" onClick={resetForm} className="px-6 py-2.5 text-slate-400 font-bold hover:text-white transition-colors">Cancelar</button>
                     <button type="submit" onClick={handleCreateService} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg flex items-center gap-2"><CheckCircle size={18} /> Registrar Corrida</button>
