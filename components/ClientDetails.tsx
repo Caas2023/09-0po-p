@@ -10,9 +10,6 @@ import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
 
-// ... (Mesmas funções auxiliares de PDF, Icons, etc - Mantidas) ...
-// Para não estourar o limite, incluo apenas as partes principais corrigidas e estruturais.
-
 interface ClientDetailsProps {
     client: Client;
     currentUser: User;
@@ -45,10 +42,39 @@ const getLocalDateStr = (d: Date) => {
 };
 
 export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: { service: ServiceRecord; client: Client; currentUser: User; onClose: () => void }) => {
-    // ... (Manter código original do ServiceDocumentModal aqui) ...
-    // Estou omitindo para economizar linhas, mas ele deve estar presente.
-    // Use o código das respostas anteriores para este componente.
-    return <div onClick={onClose}>Modal PDF Placeholder</div>;
+    const invoiceRef = useRef<HTMLDivElement>(null);
+    const [isSharing, setIsSharing] = useState(false);
+    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+    const myCompany = { name: currentUser.companyName || "LogiTrack", cnpj: currentUser.companyCnpj, address: currentUser.companyAddress, phone: currentUser.phone, email: currentUser.email };
+
+    const handleDownloadPDF = async () => {
+        if (!invoiceRef.current) return;
+        setIsGeneratingPdf(true);
+        try {
+            const canvas = await html2canvas(invoiceRef.current, { scale: 2 });
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const imgProps = pdf.getImageProperties(imgData);
+            const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+            pdf.save(`Ordem_${service.id.slice(0, 8)}.pdf`);
+        } catch(e) { console.error(e); } finally { setIsGeneratingPdf(false); }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+             <div className="bg-white p-4 rounded-xl shadow-xl">
+                 <div ref={invoiceRef} className="p-8 bg-white text-black min-w-[500px]">
+                     <h1 className="text-xl font-bold">{myCompany.name}</h1>
+                     <p>Ordem #{service.id.slice(0,8)}</p>
+                     <p>Total: R$ {(service.cost + (service.waitingTime||0) + (service.extraFee||0)).toFixed(2)}</p>
+                 </div>
+                 <button onClick={handleDownloadPDF} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded">Baixar PDF</button>
+                 <button onClick={onClose} className="mt-4 ml-2 bg-gray-200 px-4 py-2 rounded">Fechar</button>
+             </div>
+        </div>
+    );
 };
 
 export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUser, onBack }) => {
@@ -60,7 +86,6 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     const [activeTab, setActiveTab] = useState<'services' | 'financial'>('services');
 
     const [showForm, setShowForm] = useState(false);
-    const [showExportMenu, setShowExportMenu] = useState(false);
     const [viewingService, setViewingService] = useState<ServiceRecord | null>(null);
     const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
     const [serviceToDelete, setServiceToDelete] = useState<ServiceRecord | null>(null);
@@ -78,14 +103,9 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
     const [isPaid, setIsPaid] = useState(false);
     
-    // Filter State
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [statusFilter, setStatusFilter] = useState<'ALL' | 'PAID' | 'PENDING'>('ALL');
+    // Filter & Select
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-    // ... (Handlers padrão) ...
     const handleAddAddress = (t: 'pickup' | 'delivery') => t === 'pickup' ? setPickupAddresses([...pickupAddresses, '']) : setDeliveryAddresses([...deliveryAddresses, '']);
     const handleRemoveAddress = (t: 'pickup' | 'delivery', i: number) => {
         if (t === 'pickup' && pickupAddresses.length > 1) setPickupAddresses(pickupAddresses.filter((_, idx) => idx !== i));
@@ -120,14 +140,14 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         e.preventDefault();
         const cleanPickups = pickupAddresses.filter(a => a.trim() !== '');
         const cleanDeliveries = deliveryAddresses.filter(a => a.trim() !== '');
-        if (cleanPickups.length === 0 || cleanDeliveries.length === 0) return;
+        if (cleanPickups.length === 0 || cleanDeliveries.length === 0) return toast.error("Preencha os endereços");
 
         const originalService = services.find(s => s.id === editingServiceId);
         const serviceData: ServiceRecord = {
             id: editingServiceId || crypto.randomUUID(),
             ownerId: '', clientId: client.id,
             pickupAddresses: cleanPickups, deliveryAddresses: cleanDeliveries,
-            cost: parseFloat(cost), driverFee: parseFloat(driverFee) || 0,
+            cost: parseFloat(cost) || 0, driverFee: parseFloat(driverFee) || 0,
             waitingTime: parseFloat(waitingTime) || 0, extraFee: parseFloat(extraFee) || 0,
             requesterName: requester, date: serviceDate,
             paid: isPaid, paymentMethod: paymentMethod,
@@ -140,41 +160,58 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         const updatedList = await getServicesByClient(client.id);
         setServices(updatedList);
         resetForm();
+        toast.success(editingServiceId ? 'Atualizado!' : 'Criado!');
     };
 
-    // ... (Filter Logic, Stats, PDF Export) ...
-    const getFilteredServices = () => {
-        let filtered = services;
-        if (startDate && endDate) {
-            filtered = filtered.filter(s => {
-                const dateStr = s.date.includes('T') ? s.date.split('T')[0] : s.date;
-                return dateStr >= startDate && dateStr <= endDate;
-            });
-        }
-        if (statusFilter === 'PAID') filtered = filtered.filter(s => s.paid === true);
-        else if (statusFilter === 'PENDING') filtered = filtered.filter(s => s.paid === false);
-        return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const confirmDeleteService = async () => {
+        if (!serviceToDelete) return;
+        setIsDeleting(true);
+        try {
+            await deleteService(serviceToDelete.id);
+            toast.success('Removido!');
+            setServices(await getServicesByClient(client.id));
+        } catch (e) { toast.error('Erro ao remover'); }
+        finally { setIsDeleting(false); setServiceToDelete(null); }
     };
-    const filteredServices = getFilteredServices();
-    
-    // Handlers vazios para não quebrar (mantenha os originais)
-    const handleExportBoleto = () => {}; 
-    const toggleSelectAll = () => {};
-    const toggleSelectRow = (id: string) => {};
-    const handleBulkStatusChange = (status: boolean) => {};
-    const confirmDeleteService = () => {};
-    const handleTogglePayment = (s: ServiceRecord) => {};
-    const isAllSelected = false;
-    const isSomeSelected = false;
+
+    const toggleSelectAll = () => setSelectedIds(selectedIds.size === services.length ? new Set() : new Set(services.map(s => s.id)));
+    const toggleSelectRow = (id: string) => { const n = new Set(selectedIds); if(n.has(id)) n.delete(id); else n.add(id); setSelectedIds(n); };
 
     const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
     const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
 
     return (
         <div className="space-y-6 animate-fade-in relative">
-            {/* Header */}
-            <div className="flex justify-between items-center mb-4">
-                <button onClick={onBack} className="flex items-center gap-2"><ArrowLeft size={20}/> Voltar</button>
+            {viewingService && <ServiceDocumentModal service={viewingService} client={client} currentUser={currentUser} onClose={() => setViewingService(null)} />}
+
+            {serviceToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                    <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-2xl max-w-sm text-center">
+                        <h3 className="font-bold text-lg mb-2 dark:text-white">Excluir Serviço?</h3>
+                        <p className="text-sm text-slate-500 mb-6">Ação irreversível.</p>
+                        <div className="flex gap-2 justify-center">
+                            <button onClick={() => setServiceToDelete(null)} className="px-4 py-2 border rounded-lg dark:text-white">Cancelar</button>
+                            <button onClick={confirmDeleteService} className="px-4 py-2 bg-red-600 text-white rounded-lg">Excluir</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                    <button onClick={onBack} className="flex items-center text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-medium gap-1"><ArrowLeft size={20}/> Voltar</button>
+                </div>
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700">
+                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{client.name}</h1>
+                    <div className="flex gap-4 text-sm text-slate-500 dark:text-slate-400">
+                        {client.email && <span>{client.email}</span>}
+                        {client.phone && <span>{client.phone}</span>}
+                    </div>
+                    <div className="flex gap-6 mt-6 border-b border-slate-200 dark:border-slate-700">
+                        <button onClick={() => setActiveTab('services')} className={`pb-3 text-sm font-bold ${activeTab === 'services' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}>Serviços</button>
+                        <button onClick={() => setActiveTab('financial')} className={`pb-3 text-sm font-bold ${activeTab === 'financial' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-500'}`}>Financeiro</button>
+                    </div>
+                </div>
             </div>
 
             {activeTab === 'services' && (
@@ -185,7 +222,6 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                         </button>
                     </div>
 
-                    {/* FORMULÁRIO PADRONIZADO (DARK MODE) */}
                     {showForm && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4 animate-fade-in">
                             <div className="bg-[#0f172a] w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden border border-slate-700 animate-slide-up max-h-[90vh] flex flex-col text-slate-100">
@@ -209,7 +245,6 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                         </div>
                                     </div>
                                     
-                                    {/* Endereços */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="space-y-3 p-4 bg-blue-900/10 rounded-xl border border-blue-900/30">
                                             <h3 className="font-bold text-blue-400 flex items-center gap-2 mb-2 text-sm"><div className="w-2 h-2 rounded-full bg-blue-500"></div> Coleta</h3>
@@ -235,7 +270,6 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                         </div>
                                     </div>
 
-                                    {/* Financeiro Completo */}
                                     <div className="pt-4 border-t border-slate-700">
                                         <h3 className="font-bold text-slate-300 mb-4 text-sm">Financeiro e Adicionais</h3>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -286,7 +320,6 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                         </div>
                                     </div>
 
-                                    {/* Pagamento */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
                                         <div className="p-3 border border-slate-700 rounded-xl">
                                             <label className="block text-sm font-bold text-slate-300 mb-1">Solicitante</label>
@@ -324,10 +357,31 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 </>
             )}
             
-            {/* Tabela (Simplificada para não estourar limite) */}
             <div className="mt-6 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 overflow-hidden">
                 <table className="w-full text-left text-sm">
-                    {/* ... (Conteúdo da tabela padrão) ... */}
+                    <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                        <tr>
+                            <th className="p-4 font-bold">Data</th>
+                            <th className="p-4 font-bold">Rota</th>
+                            <th className="p-4 font-bold text-right">Cobrado (Int)</th>
+                            <th className="p-4 font-bold text-center">Status</th>
+                            <th className="p-4 text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                        {filteredServices.map(s => (
+                            <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-700">
+                                <td className="p-4">{new Date(s.date).toLocaleDateString()}</td>
+                                <td className="p-4 max-w-xs truncate">{s.pickupAddresses[0]} {'->'} {s.deliveryAddresses[0]}</td>
+                                <td className="p-4 text-right font-bold text-emerald-600">R$ {(s.cost + (s.waitingTime || 0)).toFixed(2)}</td>
+                                <td className="p-4 text-center">{s.paid ? 'Pago' : 'Pendente'}</td>
+                                <td className="p-4 text-center flex justify-center gap-2">
+                                    <button onClick={() => handleEditService(s)} className="text-blue-500"><Pencil size={16}/></button>
+                                    <button onClick={() => setServiceToDelete(s)} className="text-red-500"><Trash2 size={16}/></button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
                 </table>
             </div>
         </div>
