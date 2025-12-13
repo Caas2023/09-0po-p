@@ -597,14 +597,15 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                         waiting > 0 ? `R$ ${waiting.toFixed(2)}` : '-',
                         extra > 0 ? `R$ ${extra.toFixed(2)}` : '-',
                         `R$ ${baseCost.toFixed(2)}`, // Coluna SERVIÇO
-                        `R$ ${lineTotal.toFixed(2)}` // Soma total da linha
+                        `R$ ${lineTotal.toFixed(2)}`, // Soma total da linha
+                        s.id.slice(0, 8).toUpperCase() // PEDIDO
                     ];
                 });
 
                 autoTable(doc, {
                     startY: currentY,
                     // Cabeçalho atualizado
-                    head: [['DATA', 'SOLICITANTE', 'ORIGEM', 'DESTINO', 'ESPERA', 'TAXA', 'SERVIÇO', 'TOTAL']],
+                    head: [['DATA', 'SOLICITANTE', 'ORIGEM', 'DESTINO', 'ESPERA', 'TAXA', 'SERVIÇO', 'TOTAL', 'PEDIDO']],
                     body: tableData,
                     theme: 'plain', 
                     styles: {
@@ -626,12 +627,13 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                     columnStyles: {
                         0: { cellWidth: 12 }, // Data
                         1: { cellWidth: 20 }, // Solicitante
-                        2: { cellWidth: 35 }, // Origem (reduzido)
-                        3: { cellWidth: 35 }, // Destino (reduzido)
+                        2: { cellWidth: 30 }, // Origem (reduzido)
+                        3: { cellWidth: 30 }, // Destino (reduzido)
                         4: { cellWidth: 15, halign: 'right' }, // Espera
                         5: { cellWidth: 15, halign: 'right' }, // Taxa
                         6: { cellWidth: 18, halign: 'right' }, // Serviço
-                        7: { cellWidth: 20, halign: 'right' }  // Total
+                        7: { cellWidth: 20, halign: 'right' }, // Total
+                        8: { cellWidth: 20, halign: 'center' } // Pedido
                     },
                     margin: { left: marginX, right: marginX }
                 });
