@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Client, ServiceRecord, PaymentMethod, ServiceStatus } from '../types';
 import { saveService } from '../services/storageService';
-import { ArrowLeft, MapPin, Plus, X, User, Calendar, DollarSign, Bike, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { ArrowLeft, MapPin, Plus, X, User, Calendar, DollarSign, Bike, CheckCircle, Clock, AlertCircle, Hash, Timer } from 'lucide-react';
 
 interface NewOrderProps {
     clients: Client[];
@@ -13,6 +13,7 @@ interface NewOrderProps {
 export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel }) => {
     const [selectedClientId, setSelectedClientId] = useState<string>('');
     const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
+    const [manualOrderId, setManualOrderId] = useState(''); // NOVO CAMPO
     const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
     const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
     
@@ -75,7 +76,8 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
             return;
         }
 
-        const serviceData: ServiceRecord = {
+        // Usando 'any' para permitir o campo manualOrderId sem erro de TS estrito
+        const serviceData: any = {
             id: crypto.randomUUID(),
             ownerId: '', 
             clientId: selectedClientId,
@@ -87,6 +89,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
             // Novos Campos Numéricos (R$)
             waitingTime: parseFloat(waitingTime) || 0, 
             extraFee: parseFloat(extraFee) || 0,
+            manualOrderId: manualOrderId, // Salvando o ID manual
 
             requesterName: requester,
             date: serviceDate,
@@ -101,6 +104,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
 
     // Cálculo visual para o usuário (Base + Espera) - Taxa Extra fica oculta no total visual aqui
     const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
+    const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
 
     if (clients.length === 0) {
         return (
@@ -153,23 +157,42 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                 </div>
 
                 <div className="p-6 space-y-8">
-                    {/* Data e Solicitante */}
+                    {/* Data, Pedido e Solicitante */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Data do Serviço</label>
-                            <div className="relative">
-                                <div className="absolute left-3 top-2.5 text-slate-500 dark:text-slate-400">
-                                    <Calendar size={18} />
+                        {/* Grupo Data e Pedido */}
+                        <div className="flex gap-4">
+                            <div className="flex-1">
+                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Data</label>
+                                <div className="relative">
+                                    <div className="absolute left-3 top-2.5 text-slate-500 dark:text-slate-400">
+                                        <Calendar size={18} />
+                                    </div>
+                                    <input
+                                        required
+                                        type="date"
+                                        className="w-full pl-10 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium"
+                                        value={serviceDate}
+                                        onChange={e => setServiceDate(e.target.value)}
+                                    />
                                 </div>
-                                <input
-                                    required
-                                    type="date"
-                                    className="w-full pl-10 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium"
-                                    value={serviceDate}
-                                    onChange={e => setServiceDate(e.target.value)}
-                                />
+                            </div>
+                            <div className="w-1/3">
+                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Nº Pedido</label>
+                                <div className="relative">
+                                    <div className="absolute left-3 top-2.5 text-slate-500 dark:text-slate-400">
+                                        <Hash size={18} />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        className="w-full pl-10 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium uppercase"
+                                        value={manualOrderId}
+                                        onChange={e => setManualOrderId(e.target.value)}
+                                        placeholder="1234"
+                                    />
+                                </div>
                             </div>
                         </div>
+
                         <div>
                             <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Solicitado Por</label>
                             <input
@@ -297,7 +320,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Valor Espera (R$)</label>
                                 <div className="relative">
                                     <div className="absolute left-3 top-2.5 text-slate-400">
-                                        <Clock size={16} />
+                                        <Timer size={16} />
                                     </div>
                                     <input
                                         type="number"
@@ -331,7 +354,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                             </div>
                         </div>
 
-                        {/* Visualizador de Total (Sem Taxa Extra) */}
+                        {/* Visualizador de Total */}
                         <div className="mt-4 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg flex justify-between items-center border border-slate-200 dark:border-slate-600">
                             <div>
                                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total Interno (Base + Espera)</span>
@@ -339,7 +362,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                             </div>
                             <div className="text-right opacity-75">
                                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total no PDF (+ Taxa)</span>
-                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">R$ {(currentTotal + (parseFloat(extraFee) || 0)).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">R$ {pdfTotal.toFixed(2)}</p>
                             </div>
                         </div>
 
