@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Client, ServiceRecord, PaymentMethod, ServiceStatus } from '../types';
-import { saveService } from '../services/storageService';
+import { saveService, getServices } from '../services/storageService'; 
 import { ArrowLeft, MapPin, Plus, X, User, Calendar, DollarSign, Bike, CheckCircle, Clock, AlertCircle, Hash, Timer } from 'lucide-react';
 
 interface NewOrderProps {
@@ -13,7 +13,7 @@ interface NewOrderProps {
 export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel }) => {
     const [selectedClientId, setSelectedClientId] = useState<string>('');
     const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
-    const [manualOrderId, setManualOrderId] = useState(''); // NOVO CAMPO
+    const [manualOrderId, setManualOrderId] = useState(''); 
     const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
     const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
     
@@ -27,6 +27,39 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
     const [paid, setPaid] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
     const [status, setStatus] = useState<ServiceStatus>('PENDING');
+
+    // --- EFEITO PARA GERAR NÚMERO DO PEDIDO AUTOMÁTICO (ATUALIZADO) ---
+    useEffect(() => {
+        const generateOrderId = async () => {
+            try {
+                // 1. Busca todas as corridas
+                const allServices = await getServices();
+                
+                // 2. Filtra apenas as corridas da data selecionada
+                const servicesToday = allServices.filter(s => {
+                    const sDate = s.date.includes('T') ? s.date.split('T')[0] : s.date;
+                    return sDate === serviceDate;
+                });
+
+                // 3. Calcula a sequência (Quantidade atual + 1)
+                const sequence = servicesToday.length + 1;
+
+                // 4. Pega dia e mês da data selecionada (YYYY-MM-DD)
+                const [year, month, day] = serviceDate.split('-');
+
+                // 5. Formata: Sequencia (2 digitos) + Dia (2 digitos) + Mês (2 digitos)
+                // Ex: Seq 1, Dia 15, Mês 03 -> 011503
+                const seqStr = sequence.toString().padStart(2, '0');
+
+                setManualOrderId(`${seqStr}${day}${month}`);
+
+            } catch (error) {
+                console.error("Erro ao gerar número do pedido:", error);
+            }
+        };
+
+        generateOrderId();
+    }, [serviceDate]); // Recalcula sempre que a data mudar
 
     const handleAddAddress = (type: 'pickup' | 'delivery') => {
         if (type === 'pickup') {
@@ -76,7 +109,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
             return;
         }
 
-        // Usando 'any' para permitir o campo manualOrderId sem erro de TS estrito
         const serviceData: any = {
             id: crypto.randomUUID(),
             ownerId: '', 
@@ -89,7 +121,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
             // Novos Campos Numéricos (R$)
             waitingTime: parseFloat(waitingTime) || 0, 
             extraFee: parseFloat(extraFee) || 0,
-            manualOrderId: manualOrderId, // Salvando o ID manual
+            manualOrderId: manualOrderId, // Salvando o ID gerado ou editado
 
             requesterName: requester,
             date: serviceDate,
@@ -102,7 +134,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
         onSave();
     };
 
-    // Cálculo visual para o usuário (Base + Espera) - Taxa Extra fica oculta no total visual aqui
+    // Cálculo visual para o usuário
     const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
     const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
 
@@ -187,7 +219,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                         className="w-full pl-10 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium uppercase"
                                         value={manualOrderId}
                                         onChange={e => setManualOrderId(e.target.value)}
-                                        placeholder="1234"
+                                        placeholder="010503"
                                     />
                                 </div>
                             </div>
