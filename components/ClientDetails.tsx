@@ -581,7 +581,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 doc.line(marginX, currentY + 1, pageWidth - marginX, currentY + 1);
                 currentY += 5;
 
-                // --- TABELA ATUALIZADA COM AS NOVAS COLUNAS ---
+                // --- TABELA ATUALIZADA COM NOVAS COLUNAS E SERVIÇO ---
                 const tableData = filteredServices.map(s => {
                     const baseCost = s.cost;
                     const waiting = s.waitingTime || 0;
@@ -596,6 +596,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                         // Colunas financeiras detalhadas
                         waiting > 0 ? `R$ ${waiting.toFixed(2)}` : '-',
                         extra > 0 ? `R$ ${extra.toFixed(2)}` : '-',
+                        `R$ ${baseCost.toFixed(2)}`, // Coluna SERVIÇO
                         `R$ ${lineTotal.toFixed(2)}` // Soma total da linha
                     ];
                 });
@@ -603,7 +604,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 autoTable(doc, {
                     startY: currentY,
                     // Cabeçalho atualizado
-                    head: [['DATA', 'SOLICITANTE', 'ORIGEM', 'DESTINO', 'ESPERA', 'TAXA', 'TOTAL']],
+                    head: [['DATA', 'SOLICITANTE', 'ORIGEM', 'DESTINO', 'ESPERA', 'TAXA', 'SERVIÇO', 'TOTAL']],
                     body: tableData,
                     theme: 'plain', 
                     styles: {
@@ -621,15 +622,16 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                         lineWidth: 0.1,
                         lineColor: 200
                     },
-                    // Larguras ajustadas para A4
+                    // Larguras ajustadas para A4 (total ~190mm disponível)
                     columnStyles: {
                         0: { cellWidth: 12 }, // Data
                         1: { cellWidth: 20 }, // Solicitante
-                        2: { cellWidth: 45 }, // Origem
-                        3: { cellWidth: 45 }, // Destino
-                        4: { cellWidth: 18, halign: 'right' }, // Espera
-                        5: { cellWidth: 18, halign: 'right' }, // Taxa
-                        6: { cellWidth: 20, halign: 'right' }  // Total
+                        2: { cellWidth: 35 }, // Origem (reduzido)
+                        3: { cellWidth: 35 }, // Destino (reduzido)
+                        4: { cellWidth: 15, halign: 'right' }, // Espera
+                        5: { cellWidth: 15, halign: 'right' }, // Taxa
+                        6: { cellWidth: 18, halign: 'right' }, // Serviço
+                        7: { cellWidth: 20, halign: 'right' }  // Total
                     },
                     margin: { left: marginX, right: marginX }
                 });
