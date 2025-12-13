@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
     LayoutGrid, Users, Truck, Wallet, FileBarChart,
@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 
 interface SidebarProps {
     currentUser: User;
@@ -19,6 +18,7 @@ interface SidebarProps {
 export function Sidebar({ currentUser, realAdminUser, darkMode, toggleDarkMode, onLogout }: SidebarProps) {
     const navigate = useNavigate();
     const isAdmin = currentUser.role === 'ADMIN';
+    const [imgError, setImgError] = useState(false); // Estado para controlar erro na imagem
 
     return (
         <nav className={clsx(
@@ -27,13 +27,26 @@ export function Sidebar({ currentUser, realAdminUser, darkMode, toggleDarkMode, 
             realAdminUser ? "mt-6 md:mt-0" : ""
         )}>
             {/* Logo - Desktop Only */}
-            <div className="hidden md:flex p-6 items-center gap-2 border-b border-slate-100 dark:border-slate-700">
-                <div className={clsx(
-                    "text-white p-1.5 rounded-lg transition-colors",
-                    realAdminUser ? 'bg-orange-500' : 'bg-blue-600'
-                )}>
-                    <Truck size={20} />
-                </div>
+            <div className="hidden md:flex p-6 items-center gap-3 border-b border-slate-100 dark:border-slate-700">
+                {/* LÓGICA DO LOGO: Tenta mostrar imagem, se falhar mostra o ícone */}
+                {!imgError ? (
+                    <div className="h-10 w-10 relative flex-shrink-0">
+                        <img 
+                            src="/logo.png" 
+                            alt="Logo" 
+                            className="h-full w-full object-contain"
+                            onError={() => setImgError(true)} // Se der erro, ativa o modo fallback
+                        />
+                    </div>
+                ) : (
+                    <div className={clsx(
+                        "text-white p-1.5 rounded-lg transition-colors",
+                        realAdminUser ? 'bg-orange-500' : 'bg-blue-600'
+                    )}>
+                        <Truck size={20} />
+                    </div>
+                )}
+                
                 <span className="text-xl font-bold text-slate-800 dark:text-white tracking-tight">LogiTrack</span>
             </div>
 
