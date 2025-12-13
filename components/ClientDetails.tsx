@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Client, ServiceRecord, PaymentMethod, User } from '../types';
 import { saveService, updateService, getServicesByClient, bulkUpdateServices, deleteService } from '../services/storageService';
-import { ArrowLeft, Plus, Calendar, MapPin, Filter, FileSpreadsheet, X, Bike, ChevronDown, FileText, ShieldCheck, Pencil, DollarSign, CheckCircle, AlertCircle, PieChart, List, CheckSquare, Square, MoreHorizontal, User as UserIcon, Building, MinusSquare, Share2, Phone, Mail, Banknote, QrCode, CreditCard, MessageCircle, Loader2, Download, Table, FileDown, Package, Clock, XCircle, Activity, Trash2, AlertTriangle, FileCheck, Timer } from 'lucide-react';
+import { ArrowLeft, Plus, Calendar, MapPin, Filter, FileSpreadsheet, X, Bike, ChevronDown, FileText, ShieldCheck, Pencil, DollarSign, CheckCircle, AlertCircle, PieChart, List, CheckSquare, Square, MoreHorizontal, User as UserIcon, Building, MinusSquare, Share2, Phone, Mail, Banknote, QrCode, CreditCard, MessageCircle, Loader2, Download, Table, FileDown, Package, Clock, XCircle, Activity, Trash2, AlertTriangle, FileCheck, Timer, Hash } from 'lucide-react';
 // @ts-ignore
 import { jsPDF } from 'jspdf';
 // @ts-ignore
@@ -14,6 +14,11 @@ interface ClientDetailsProps {
     client: Client;
     currentUser: User;
     onBack: () => void;
+}
+
+// Interface estendida localmente para incluir o novo campo sem quebrar o resto
+interface ExtendedServiceRecord extends ServiceRecord {
+    manualOrderId?: string;
 }
 
 const getPaymentMethodLabel = (method?: PaymentMethod) => {
@@ -42,7 +47,7 @@ const getLocalDateStr = (d: Date) => {
 };
 
 // --- Service Document Modal Component ---
-export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: { service: ServiceRecord; client: Client; currentUser: User; onClose: () => void }) => {
+export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: { service: ExtendedServiceRecord; client: Client; currentUser: User; onClose: () => void }) => {
     const invoiceRef = useRef<HTMLDivElement>(null);
     const [isSharing, setIsSharing] = useState(false);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -83,7 +88,7 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
         try {
             const pdf = await generatePDF();
             if (pdf) {
-                pdf.save(`Ordem_${service.id.slice(0, 8)}.pdf`);
+                pdf.save(`Ordem_${service.manualOrderId || service.id.slice(0, 8)}.pdf`);
             }
         } catch (error) {
             console.error("Error downloading PDF:", error);
@@ -101,17 +106,18 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
             const pdf = await generatePDF();
             if (!pdf) throw new Error("PDF generation failed");
 
-            const file = new File([pdf.output('blob')], `Ordem_${service.id.slice(0, 8)}.pdf`, { type: 'application/pdf' });
+            const fileName = `Ordem_${service.manualOrderId || service.id.slice(0, 8)}.pdf`;
+            const file = new File([pdf.output('blob')], fileName, { type: 'application/pdf' });
 
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 await navigator.share({
                     files: [file],
                     title: 'Comprovante de Serviço',
-                    text: `Segue o comprovante da ordem #${service.id.slice(0, 8)} - ${client.name}`,
+                    text: `Segue o comprovante da ordem ${service.manualOrderId ? '#' + service.manualOrderId : ''} - ${client.name}`,
                 });
             } else {
-                pdf.save(`Ordem_${service.id.slice(0, 8)}.pdf`);
-                const message = `Segue o comprovante da ordem #${service.id.slice(0, 8)}. (O arquivo PDF foi baixado no seu dispositivo)`;
+                pdf.save(fileName);
+                const message = `Segue o comprovante da ordem ${service.manualOrderId ? '#' + service.manualOrderId : '#' + service.id.slice(0, 8)}. (O arquivo PDF foi baixado no seu dispositivo)`;
                 let phone = client.phone.replace(/\D/g, '');
                 if (phone.length >= 10 && phone.length <= 11) {
                     phone = `55${phone}`;
@@ -176,7 +182,9 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
 
                         <div className="bg-slate-100 border-l-4 border-slate-800 p-3 mb-8 flex justify-between items-center">
                             <span className="font-bold text-lg text-slate-800 uppercase">Ordem de Serviço</span>
-                            <span className="font-mono text-xl font-bold text-slate-900">#{service.id.slice(0, 8).toUpperCase()}</span>
+                            <span className="font-mono text-xl font-bold text-slate-900">
+                                #{service.manualOrderId ? service.manualOrderId.toUpperCase() : service.id.slice(0, 8).toUpperCase()}
+                            </span>
                         </div>
 
                         <div className="mb-8">
@@ -241,23 +249,25 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
 
 
 export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUser, onBack }) => {
-    const [services, setServices] = useState<ServiceRecord[]>([]);
+    // Cast para ExtendedServiceRecord para usar o novo campo na lista
+    const [services, setServices] = useState<ExtendedServiceRecord[]>([]);
 
     useEffect(() => {
-        getServicesByClient(client.id).then(setServices);
+        getServicesByClient(client.id).then((data: ServiceRecord[]) => setServices(data as ExtendedServiceRecord[]));
     }, [client.id]);
     const [activeTab, setActiveTab] = useState<'services' | 'financial'>('services');
 
     const [showForm, setShowForm] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
-    const [viewingService, setViewingService] = useState<ServiceRecord | null>(null);
+    const [viewingService, setViewingService] = useState<ExtendedServiceRecord | null>(null);
 
     const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
-    const [serviceToDelete, setServiceToDelete] = useState<ServiceRecord | null>(null);
+    const [serviceToDelete, setServiceToDelete] = useState<ExtendedServiceRecord | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
     // Form State
     const [serviceDate, setServiceDate] = useState(getLocalDateStr(new Date()));
+    const [manualOrderId, setManualOrderId] = useState(''); // NOVO STATE
     const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
     const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
     
@@ -312,9 +322,10 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         }
     };
 
-    const handleEditService = (service: ServiceRecord) => {
+    const handleEditService = (service: ExtendedServiceRecord) => {
         setEditingServiceId(service.id);
         setServiceDate(service.date.includes('T') ? service.date.split('T')[0] : service.date);
+        setManualOrderId(service.manualOrderId || ''); // Carregar o ID manual
         setPickupAddresses([...service.pickupAddresses]);
         setDeliveryAddresses([...service.deliveryAddresses]);
         setCost(service.cost.toString());
@@ -335,7 +346,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
             await deleteService(serviceToDelete.id);
             toast.success('Serviço removido com sucesso.');
             const updatedList = await getServicesByClient(client.id);
-            setServices(updatedList);
+            setServices(updatedList as ExtendedServiceRecord[]);
         } catch (error) {
             toast.error('Erro ao remover serviço.');
             console.error(error);
@@ -345,11 +356,11 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         }
     };
 
-    const handleTogglePayment = async (service: ServiceRecord) => {
+    const handleTogglePayment = async (service: ExtendedServiceRecord) => {
         const updatedService = { ...service, paid: !service.paid };
         await updateService(updatedService);
         const updatedList = await getServicesByClient(client.id);
-        setServices(updatedList);
+        setServices(updatedList as ExtendedServiceRecord[]);
     };
 
     const resetForm = () => {
@@ -362,6 +373,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         setRequester('');
         setPaymentMethod('PIX');
         setIsPaid(false);
+        setManualOrderId(''); // Resetar
         setServiceDate(getLocalDateStr(new Date()));
         setEditingServiceId(null);
         setShowForm(false);
@@ -380,7 +392,8 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
 
         const originalService = services.find(s => s.id === editingServiceId);
 
-        const serviceData: ServiceRecord = {
+        // Cast 'any' para permitir a propriedade manualOrderId se a interface original não tiver
+        const serviceData: any = {
             id: editingServiceId || crypto.randomUUID(),
             ownerId: '', 
             clientId: client.id,
@@ -392,6 +405,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
             // Novos campos
             waitingTime: parseFloat(waitingTime) || 0,
             extraFee: parseFloat(extraFee) || 0,
+            manualOrderId: manualOrderId, // Salvando o ID Manual
 
             requesterName: requester,
             date: serviceDate,
@@ -407,7 +421,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         }
 
         const updatedList = await getServicesByClient(client.id);
-        setServices(updatedList);
+        setServices(updatedList as ExtendedServiceRecord[]);
         resetForm();
     };
 
@@ -491,7 +505,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
 
         await bulkUpdateServices(updates);
         const updatedList = await getServicesByClient(client.id);
-        setServices(updatedList);
+        setServices(updatedList as ExtendedServiceRecord[]);
         setSelectedIds(new Set()); 
     };
 
@@ -581,12 +595,17 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 doc.line(marginX, currentY + 1, pageWidth - marginX, currentY + 1);
                 currentY += 5;
 
-                // --- TABELA ATUALIZADA COM NOVAS COLUNAS E SERVIÇO ---
+                // --- TABELA ATUALIZADA ---
                 const tableData = filteredServices.map(s => {
                     const baseCost = s.cost;
                     const waiting = s.waitingTime || 0;
                     const extra = s.extraFee || 0;
                     const lineTotal = baseCost + waiting + extra;
+                    
+                    // Lógica do Pedido: Usa o manual se existir, senão usa o ID curto
+                    const displayOrderId = s.manualOrderId 
+                        ? s.manualOrderId 
+                        : s.id.slice(0, 8).toUpperCase();
 
                     return [
                         new Date(s.date + 'T00:00:00').toLocaleDateString().substring(0, 5), // DD/MM
@@ -598,7 +617,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                         extra > 0 ? `R$ ${extra.toFixed(2)}` : '-',
                         `R$ ${baseCost.toFixed(2)}`, // Coluna SERVIÇO
                         `R$ ${lineTotal.toFixed(2)}`, // Soma total da linha
-                        s.id.slice(0, 8).toUpperCase() // PEDIDO
+                        displayOrderId // PEDIDO
                     ];
                 });
 
@@ -623,7 +642,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                         lineWidth: 0.1,
                         lineColor: 200
                     },
-                    // Larguras ajustadas para A4 (total ~190mm disponível)
+                    // Larguras ajustadas
                     columnStyles: {
                         0: { cellWidth: 12 }, // Data
                         1: { cellWidth: 20 }, // Solicitante
@@ -685,7 +704,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         const pickupHeaders = Array.from({ length: maxPickups }, (_, i) => `Coleta ${i + 1}`);
         const deliveryHeaders = Array.from({ length: maxDeliveries }, (_, i) => `Entrega ${i + 1}`);
 
-        const headers = ['Data', 'Solicitante', ...pickupHeaders, ...deliveryHeaders, 'Valor Base (R$)', 'Espera (R$)', 'Taxa Extra (R$)', 'Total (R$)', 'Método', 'Pagamento'];
+        const headers = ['Data', 'Pedido', 'Solicitante', ...pickupHeaders, ...deliveryHeaders, 'Valor Base (R$)', 'Espera (R$)', 'Taxa Extra (R$)', 'Total (R$)', 'Método', 'Pagamento'];
         
         const rows = filteredServices.map(s => {
             const safeString = (str: string) => `"${str.replace(/"/g, '""')}"`;
@@ -696,6 +715,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
 
             return [
                 new Date(s.date + 'T00:00:00').toLocaleDateString(),
+                safeString(s.manualOrderId || ''),
                 safeString(s.requesterName),
                 ...pickupCols,
                 ...deliveryCols,
@@ -883,11 +903,30 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                     {/* FORMULÁRIO PADRONIZADO DENTRO DO CLIENTE (DARK MODE/SLATE-900) */}
                     {showForm && (
                         <form onSubmit={(e) => { e.preventDefault(); handleSaveService(e); }} className="bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-700 space-y-6 animate-slide-down">
-                            <div className="flex justify-between items-center border-b border-slate-700 pb-4">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-700 pb-4 gap-4">
                                 <h3 className="font-bold text-white text-lg">{editingServiceId ? 'Editar Corrida' : 'Registrar Nova Corrida'}</h3>
-                                <div className="text-right">
-                                    <label className="text-xs text-slate-400 block mb-1">Data</label>
-                                    <input type="date" className="p-1 bg-slate-800 text-white border border-slate-600 rounded" value={serviceDate} onChange={e => setServiceDate(e.target.value)} />
+                                
+                                {/* GRUPO: DATA e PEDIDO (Lado a Lado) */}
+                                <div className="flex gap-4 w-full sm:w-auto">
+                                    <div className="w-1/2 sm:w-32">
+                                        <label className="text-xs text-slate-400 block mb-1 font-bold">Nº Pedido (Op.)</label>
+                                        <div className="relative">
+                                            <Hash size={14} className="absolute left-2 top-2 text-slate-500" />
+                                            <input 
+                                                type="text" 
+                                                className="w-full pl-7 p-1 bg-slate-800 text-white border border-slate-600 rounded text-sm focus:border-blue-500 outline-none uppercase" 
+                                                value={manualOrderId} 
+                                                onChange={e => setManualOrderId(e.target.value)}
+                                                placeholder="1234..."
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="w-1/2 sm:w-auto text-right">
+                                        <label className="text-xs text-slate-400 block mb-1 font-bold">Data</label>
+                                        <div className="relative">
+                                            <input type="date" className="p-1 bg-slate-800 text-white border border-slate-600 rounded text-sm" value={serviceDate} onChange={e => setServiceDate(e.target.value)} />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1284,9 +1323,16 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                                 </button>
                                             </td>
                                             <td className="p-4 text-slate-700 dark:text-slate-300 whitespace-nowrap align-top font-medium">
-                                                <div className="flex items-center gap-2">
-                                                    <Calendar size={16} className="text-slate-400" />
-                                                    {new Date(service.date + 'T00:00:00').toLocaleDateString()}
+                                                <div className="flex flex-col">
+                                                    <div className="flex items-center gap-2">
+                                                        <Calendar size={16} className="text-slate-400" />
+                                                        {new Date(service.date + 'T00:00:00').toLocaleDateString()}
+                                                    </div>
+                                                    {service.manualOrderId && (
+                                                        <span className="text-[10px] text-blue-500 font-bold mt-1 uppercase">
+                                                            #{service.manualOrderId}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="p-4 max-w-xs align-top">
