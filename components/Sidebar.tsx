@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
     LayoutGrid, Users, Truck, Wallet, FileBarChart,
@@ -6,6 +6,10 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 import { clsx } from 'clsx';
+
+// --- IMPORTANTE: Certifique-se que o arquivo existe em src/assets/logo.png ---
+// Se sua imagem for .jpg ou .svg, mude a extensão aqui
+import logoImg from '../assets/logo.png'; 
 
 interface SidebarProps {
     currentUser: User;
@@ -18,7 +22,6 @@ interface SidebarProps {
 export function Sidebar({ currentUser, realAdminUser, darkMode, toggleDarkMode, onLogout }: SidebarProps) {
     const navigate = useNavigate();
     const isAdmin = currentUser.role === 'ADMIN';
-    const [imgError, setImgError] = useState(false); // Estado para controlar erro na imagem
 
     return (
         <nav className={clsx(
@@ -28,33 +31,32 @@ export function Sidebar({ currentUser, realAdminUser, darkMode, toggleDarkMode, 
         )}>
             {/* Logo - Desktop Only */}
             <div className="hidden md:flex p-6 items-center gap-3 border-b border-slate-100 dark:border-slate-700">
-                {/* LÓGICA DO LOGO: Tenta mostrar imagem, se falhar mostra o ícone */}
-                {!imgError ? (
-                    <div className="h-10 w-10 relative flex-shrink-0">
-                        <img 
-                            src="/logo.png" 
-                            alt="Logo" 
-                            className="h-full w-full object-contain"
-                            onError={() => setImgError(true)} // Se der erro, ativa o modo fallback
-                        />
-                    </div>
-                ) : (
-                    <div className={clsx(
-                        "text-white p-1.5 rounded-lg transition-colors",
-                        realAdminUser ? 'bg-orange-500' : 'bg-blue-600'
-                    )}>
-                        <Truck size={20} />
-                    </div>
-                )}
-                
+                {/* ÁREA DO LOGO */}
+                <div className="h-10 w-10 relative flex-shrink-0">
+                    <img 
+                        src={logoImg} 
+                        alt="LogiTrack Logo" 
+                        className="h-full w-full object-contain"
+                        // Fallback de segurança: se a imagem falhar, mostra o ícone
+                        onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            const parent = e.currentTarget.parentElement;
+                            if (parent) {
+                                parent.className = "h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center text-white";
+                                // Injeta o ícone SVG via HTML se a imagem quebrar
+                                parent.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H10v12h0zM2 17h4V7H2v10h0zM18 17h4V9h-4v8h0z"/></svg>';
+                            }
+                        }}
+                    />
+                </div>
                 <span className="text-xl font-bold text-slate-800 dark:text-white tracking-tight">LogiTrack</span>
             </div>
 
             {/* User Profile Summary */}
             <div className="hidden md:flex p-4 items-center gap-3 bg-slate-50 dark:bg-slate-700 mx-4 mt-4 rounded-xl border border-slate-100 dark:border-slate-600">
                 <div className={clsx(
-                    "w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg",
-                    realAdminUser ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'
+                    "w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg text-white shadow-sm",
+                    realAdminUser ? 'bg-orange-500' : 'bg-blue-600'
                 )}>
                     {currentUser.name.charAt(0).toUpperCase()}
                 </div>
