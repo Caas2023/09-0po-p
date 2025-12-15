@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Search, Filter, ClipboardList, Trash2, AlertTriangle, X } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Search, Filter, ClipboardList, Trash2, AlertTriangle, X, LayoutGrid, LayoutList, Trophy } from 'lucide-react';
 import { Client, ServiceRecord, User } from '../types';
 import { saveClient, deleteClient } from '../services/storageService';
 import { useNavigate } from 'react-router-dom';
@@ -17,6 +17,9 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
     const [isAdding, setIsAdding] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterCategory, setFilterCategory] = useState('Todos');
+    
+    // Novo estado para controlar o modo de visualização (Grade ou Lista)
+    const [viewMode, setViewMode] = useState<'GRID' | 'LIST'>('GRID');
 
     // Estado para controle do Modal de Exclusão
     const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
@@ -32,6 +35,11 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
     const [newClientCnpj, setNewClientCnpj] = useState('');
 
     const categories = ['Varejo', 'Serviços', 'Logística', 'Saúde', 'Tecnologia', 'Construção', 'Educação', 'Automotivo', 'Eventos', 'Outros'];
+
+    // Função auxiliar para contar serviços (agora usamos ela também na ordenação)
+    const getServiceCount = (clientId: string) => {
+        return services.filter(s => s.clientId === clientId).length;
+    };
 
     const handleAddClient = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -81,19 +89,32 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
         }
     };
 
-    const filteredClients = clients.filter(client => {
-        const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            client.phone.includes(searchTerm);
+    // LÓGICA DE FILTRO E ORDENAÇÃO ATUALIZADA
+    const filteredAndSortedClients = useMemo(() => {
+        // 1. Filtrar
+        const filtered = clients.filter(client => {
+            const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                client.phone.includes(searchTerm);
 
-        const matchesCategory = filterCategory === 'Todos' || (client.category || 'Outros') === filterCategory;
+            const matchesCategory = filterCategory === 'Todos' || (client.category || 'Outros') === filterCategory;
 
-        return matchesSearch && matchesCategory;
-    });
+            return matchesSearch && matchesCategory;
+        });
 
-    const getServiceCount = (clientId: string) => {
-        return services.filter(s => s.clientId === clientId).length;
-    };
+        // 2. Ordenar (Quem tem mais serviços fica em cima)
+        return filtered.sort((a, b) => {
+            const countA = getServiceCount(a.id);
+            const countB = getServiceCount(b.id);
+
+            // Ordem decrescente de serviços (Maior para o menor)
+            if (countB !== countA) {
+                return countB - countA;
+            }
+            // Desempate por nome alfabético
+            return a.name.localeCompare(b.name);
+        });
+    }, [clients, searchTerm, filterCategory, services]);
 
     return (
         <div className="space-y-6 animate-fade-in relative">
@@ -135,12 +156,32 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Clientes</h1>
-                <button
-                    onClick={() => setIsAdding(!isAdding)}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                    {isAdding ? 'Cancelar' : 'Adicionar Cliente'}
-                </button>
+                <div className="flex gap-2 w-full md:w-auto">
+                    {/* Botões de Alternância de Visualização */}
+                    <div className="flex bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
+                        <button 
+                            onClick={() => setViewMode('GRID')}
+                            className={`p-2 rounded-md transition-all ${viewMode === 'GRID' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-slate-400 hover:text-slate-600'}`}
+                            title="Visualização em Grade"
+                        >
+                            <LayoutGrid size={20} />
+                        </button>
+                        <button 
+                            onClick={() => setViewMode('LIST')}
+                            className={`p-2 rounded-md transition-all ${viewMode === 'LIST' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-slate-400 hover:text-slate-600'}`}
+                            title="Visualização em Lista"
+                        >
+                            <LayoutList size={20} />
+                        </button>
+                    </div>
+
+                    <button
+                        onClick={() => setIsAdding(!isAdding)}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex-1 md:flex-none"
+                    >
+                        {isAdding ? 'Cancelar' : 'Adicionar Cliente'}
+                    </button>
+                </div>
             </div>
 
             {/* Search and Filter Bar */}
@@ -197,7 +238,6 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
                             </select>
                         </div>
 
-                        {/* EMAIL AGORA É OPCIONAL */}
                         <div className="space-y-1">
                             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Email</label>
                             <input 
@@ -236,60 +276,115 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
                 </form>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredClients.length > 0 ? (
-                    filteredClients.map(client => {
+            {filteredAndSortedClients.length === 0 ? (
+                <div className="col-span-full py-12 text-center text-slate-400">
+                    {clients.length === 0
+                        ? "Você ainda não possui clientes. Adicione o primeiro acima!"
+                        : "Nenhum cliente encontrado para a busca selecionada."}
+                </div>
+            ) : (
+                <div className={viewMode === 'GRID' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "flex flex-col gap-3"}>
+                    {filteredAndSortedClients.map((client, index) => {
                         const count = getServiceCount(client.id);
-                        return (
-                            <div
-                                key={client.id}
-                                onClick={() => navigate(`/clients/${client.id}`)}
-                                className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group relative"
-                            >
-                                <div className="absolute top-4 right-4 flex items-center gap-2">
-                                    <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-md border border-slate-200 dark:border-slate-600">
-                                        {client.category || 'Sem Categoria'}
-                                    </span>
-                                    
-                                    {/* Ícone de Exclusão (Lixeira) */}
-                                    <button 
-                                        onClick={(e) => {
-                                            e.stopPropagation(); // Impede a navegação
-                                            setClientToDelete(client);
-                                        }}
-                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-colors"
-                                        title="Excluir Cliente"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
+                        
+                        // Destaque visual para o TOP 3 (apenas no modo GRID)
+                        const isTopRank = index < 3 && count > 0;
+                        const rankColor = index === 0 ? 'text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200' : 
+                                          index === 1 ? 'text-slate-400 bg-slate-100 dark:bg-slate-700 border-slate-300' :
+                                          'text-orange-500 bg-orange-50 dark:bg-orange-900/20 border-orange-200';
 
-                                <h3 className="text-lg font-semibold text-slate-800 dark:text-white group-hover:text-blue-600 mb-1 pr-24 truncate">{client.name}</h3>
-                                {client.contactPerson && <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">Contato: {client.contactPerson}</p>}
-
-                                <div className="text-sm text-slate-500 dark:text-slate-400 space-y-1">
-                                    <p className="truncate">{client.email || 'Sem email'}</p>
-                                    <p>{client.phone}</p>
-                                </div>
-
-                                <div className="mt-4 pt-4 border-t border-slate-50 dark:border-slate-700 flex justify-between items-center">
-                                    <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/50 px-2 py-1 rounded-md text-xs font-bold">
-                                        <ClipboardList size={14} className="text-blue-500" />
-                                        {count} {count === 1 ? 'Serviço' : 'Serviços'}
+                        if (viewMode === 'LIST') {
+                            // --- MODO LISTA ---
+                            return (
+                                <div
+                                    key={client.id}
+                                    onClick={() => navigate(`/clients/${client.id}`)}
+                                    className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer flex justify-between items-center group"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${isTopRank ? rankColor : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
+                                            {isTopRank ? <Trophy size={14} /> : index + 1}
+                                        </div>
+                                        <div>
+                                            <h3 className="font-semibold text-slate-800 dark:text-white group-hover:text-blue-600">{client.name}</h3>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400">{client.category}</p>
+                                        </div>
                                     </div>
-                                    <span className="font-medium text-blue-500 group-hover:underline text-xs">Ver Detalhes &rarr;</span>
+                                    
+                                    <div className="flex items-center gap-6">
+                                        <div className="text-right hidden sm:block">
+                                            <p className="text-xs text-slate-500 dark:text-slate-400">{client.phone}</p>
+                                            <p className="text-xs text-slate-400 dark:text-slate-500">{client.contactPerson || '-'}</p>
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700">
+                                            <ClipboardList size={16} className="text-blue-500" />
+                                            <span className="font-bold text-slate-700 dark:text-slate-200">{count}</span>
+                                        </div>
+
+                                        <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setClientToDelete(client);
+                                            }}
+                                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                        )
-                    })
-                ) : (
-                    <div className="col-span-full py-12 text-center text-slate-400">
-                        {clients.length === 0
-                            ? "Você ainda não possui clientes. Adicione o primeiro acima!"
-                            : "Nenhum cliente encontrado para a busca selecionada."}
-                    </div>
-                )}
-            </div>
+                            );
+                        } else {
+                            // --- MODO GRADE (Cartões Atuais) ---
+                            return (
+                                <div
+                                    key={client.id}
+                                    onClick={() => navigate(`/clients/${client.id}`)}
+                                    className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group relative"
+                                >
+                                    <div className="absolute top-4 right-4 flex items-center gap-2">
+                                        {isTopRank && (
+                                            <div className={`p-1 rounded-full border ${rankColor}`} title="Top Cliente">
+                                                <Trophy size={12} />
+                                            </div>
+                                        )}
+                                        <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-md border border-slate-200 dark:border-slate-600">
+                                            {client.category || 'Sem Categoria'}
+                                        </span>
+                                        
+                                        <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setClientToDelete(client);
+                                            }}
+                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-colors"
+                                            title="Excluir Cliente"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+
+                                    <h3 className="text-lg font-semibold text-slate-800 dark:text-white group-hover:text-blue-600 mb-1 pr-24 truncate">{client.name}</h3>
+                                    {client.contactPerson && <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">Contato: {client.contactPerson}</p>}
+
+                                    <div className="text-sm text-slate-500 dark:text-slate-400 space-y-1">
+                                        <p className="truncate">{client.email || 'Sem email'}</p>
+                                        <p>{client.phone}</p>
+                                    </div>
+
+                                    <div className="mt-4 pt-4 border-t border-slate-50 dark:border-slate-700 flex justify-between items-center">
+                                        <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/50 px-2 py-1 rounded-md text-xs font-bold">
+                                            <ClipboardList size={14} className="text-blue-500" />
+                                            {count} {count === 1 ? 'Serviço' : 'Serviços'}
+                                        </div>
+                                        <span className="font-medium text-blue-500 group-hover:underline text-xs">Ver Detalhes &rarr;</span>
+                                    </div>
+                                </div>
+                            );
+                        }
+                    })}
+                </div>
+            )}
         </div>
     );
 }
