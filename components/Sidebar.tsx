@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
     LayoutGrid, Users, Truck, Wallet, FileBarChart,
@@ -6,10 +6,6 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 import { clsx } from 'clsx';
-
-// --- IMPORTANTE: Certifique-se que o arquivo existe em src/assets/logo.png ---
-// Se sua imagem for .jpg ou .svg, mude a extensão aqui
-import logoImg from '../assets/logo.png'; 
 
 interface SidebarProps {
     currentUser: User;
@@ -22,6 +18,7 @@ interface SidebarProps {
 export function Sidebar({ currentUser, realAdminUser, darkMode, toggleDarkMode, onLogout }: SidebarProps) {
     const navigate = useNavigate();
     const isAdmin = currentUser.role === 'ADMIN';
+    const [imgError, setImgError] = useState(false);
 
     return (
         <nav className={clsx(
@@ -33,21 +30,22 @@ export function Sidebar({ currentUser, realAdminUser, darkMode, toggleDarkMode, 
             <div className="hidden md:flex p-6 items-center gap-3 border-b border-slate-100 dark:border-slate-700">
                 {/* ÁREA DO LOGO */}
                 <div className="h-10 w-10 relative flex-shrink-0">
-                    <img 
-                        src={logoImg} 
-                        alt="LogiTrack Logo" 
-                        className="h-full w-full object-contain"
-                        // Fallback de segurança: se a imagem falhar, mostra o ícone
-                        onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            const parent = e.currentTarget.parentElement;
-                            if (parent) {
-                                parent.className = "h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center text-white";
-                                // Injeta o ícone SVG via HTML se a imagem quebrar
-                                parent.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H10v12h0zM2 17h4V7H2v10h0zM18 17h4V9h-4v8h0z"/></svg>';
-                            }
-                        }}
-                    />
+                    {!imgError ? (
+                        <img 
+                            src="/logo.png" 
+                            alt="LogiTrack Logo" 
+                            className="h-full w-full object-contain"
+                            onError={() => setImgError(true)}
+                        />
+                    ) : (
+                        // Fallback: Se a imagem não carregar, mostra o ícone do caminhão
+                        <div className={clsx(
+                            "h-full w-full rounded-lg flex items-center justify-center text-white transition-colors",
+                            realAdminUser ? 'bg-orange-500' : 'bg-blue-600'
+                        )}>
+                            <Truck size={20} />
+                        </div>
+                    )}
                 </div>
                 <span className="text-xl font-bold text-slate-800 dark:text-white tracking-tight">LogiTrack</span>
             </div>
