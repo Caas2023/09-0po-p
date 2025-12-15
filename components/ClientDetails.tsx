@@ -602,38 +602,46 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                     const extra = s.extraFee || 0;
                     const lineTotal = baseCost + waiting + extra;
                     
-                    // Lógica do Pedido: Usa o manual se existir, senão usa o ID curto
+                    // Lógica do Pedido
                     const displayOrderId = s.manualOrderId 
                         ? s.manualOrderId 
                         : s.id.slice(0, 8).toUpperCase();
 
+                    // Formatação profissional dos endereços
+                    const formatAddressList = (addresses: string[]) => {
+                        if (!addresses || addresses.length === 0) return '-';
+                        if (addresses.length === 1) return addresses[0];
+                        // Adiciona bullet point para múltiplos endereços
+                        return addresses.map(a => `• ${a}`).join('\n');
+                    };
+
                     return [
                         new Date(s.date + 'T00:00:00').toLocaleDateString().substring(0, 5), // DD/MM
                         s.requesterName.substring(0, 15), 
-                        s.pickupAddresses[0] || '-',
-                        s.deliveryAddresses[0] || '-',
+                        formatAddressList(s.pickupAddresses),   // LISTA FORMATADA (Origem)
+                        formatAddressList(s.deliveryAddresses), // LISTA FORMATADA (Destino)
                         // Colunas financeiras detalhadas
                         waiting > 0 ? `R$ ${waiting.toFixed(2)}` : '-',
                         extra > 0 ? `R$ ${extra.toFixed(2)}` : '-',
-                        `R$ ${baseCost.toFixed(2)}`, // Coluna SERVIÇO
-                        `R$ ${lineTotal.toFixed(2)}`, // Soma total da linha
-                        displayOrderId // PEDIDO
+                        `R$ ${baseCost.toFixed(2)}`, 
+                        `R$ ${lineTotal.toFixed(2)}`, 
+                        displayOrderId
                     ];
                 });
 
                 autoTable(doc, {
                     startY: currentY,
-                    // Cabeçalho atualizado
                     head: [['DATA', 'SOLICITANTE', 'ORIGEM', 'DESTINO', 'ESPERA', 'TAXA', 'SERVIÇO', 'TOTAL', 'PEDIDO']],
                     body: tableData,
                     theme: 'plain', 
                     styles: {
-                        fontSize: 7, // Fonte levemente menor para caber tudo
+                        fontSize: 7, 
                         cellPadding: 2,
                         textColor: 0,
                         lineColor: 200,
                         lineWidth: 0.1,
-                        valign: 'middle'
+                        valign: 'middle',
+                        overflow: 'linebreak' // Garante que a quebra de linha funcione
                     },
                     headStyles: {
                         fillColor: [240, 240, 240], 
@@ -642,17 +650,16 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                         lineWidth: 0.1,
                         lineColor: 200
                     },
-                    // Larguras ajustadas
                     columnStyles: {
-                        0: { cellWidth: 12 }, // Data
-                        1: { cellWidth: 20 }, // Solicitante
-                        2: { cellWidth: 30 }, // Origem (reduzido)
-                        3: { cellWidth: 30 }, // Destino (reduzido)
-                        4: { cellWidth: 15, halign: 'right' }, // Espera
-                        5: { cellWidth: 15, halign: 'right' }, // Taxa
-                        6: { cellWidth: 18, halign: 'right' }, // Serviço
-                        7: { cellWidth: 20, halign: 'right' }, // Total
-                        8: { cellWidth: 20, halign: 'center' } // Pedido
+                        0: { cellWidth: 12 }, 
+                        1: { cellWidth: 20 }, 
+                        2: { cellWidth: 30 }, // Origem
+                        3: { cellWidth: 30 }, // Destino
+                        4: { cellWidth: 15, halign: 'right' }, 
+                        5: { cellWidth: 15, halign: 'right' }, 
+                        6: { cellWidth: 18, halign: 'right' }, 
+                        7: { cellWidth: 20, halign: 'right' }, 
+                        8: { cellWidth: 20, halign: 'center' } 
                     },
                     margin: { left: marginX, right: marginX }
                 });
@@ -669,7 +676,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 doc.setLineWidth(0.1);
                 doc.line(marginX, finalY, pageWidth - marginX, finalY);
 
-                // Cálculo do Total Geral (Já inclui Espera e Taxa Extra)
+                // Cálculo do Total Geral
                 const totalValue = filteredServices.reduce((sum, s) => {
                     return sum + s.cost + (s.waitingTime || 0) + (s.extraFee || 0);
                 }, 0);
