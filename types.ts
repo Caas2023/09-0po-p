@@ -46,6 +46,9 @@ export interface ServiceRecord {
   paymentMethod?: PaymentMethod;
   status: ServiceStatus;
   
+  // --- CAMPO DO PEDIDO MANUAL ---
+  manualOrderId?: string; 
+  
   // --- NOVOS CAMPOS EM REAIS (R$) ---
   waitingTime?: number; // Valor da Espera (Soma no interno e no cliente)
   extraFee?: number;    // Taxa Extra (Soma APENAS no PDF do cliente)
