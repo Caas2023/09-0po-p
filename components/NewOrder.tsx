@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Client, ServiceRecord, PaymentMethod, ServiceStatus } from '../types';
 import { saveService, getServices } from '../services/storageService'; 
-import { ArrowLeft, MapPin, Plus, X, User, Calendar, DollarSign, Bike, CheckCircle, Clock, AlertCircle, Hash, Timer } from 'lucide-react';
+import { ArrowLeft, MapPin, Plus, X, User, Calendar, DollarSign, Bike, CheckCircle, Hash, Timer } from 'lucide-react';
 
 interface NewOrderProps {
     clients: Client[];
@@ -14,6 +14,10 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
     const [selectedClientId, setSelectedClientId] = useState<string>('');
     const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
     const [manualOrderId, setManualOrderId] = useState(''); 
+    
+    // --- NOVO ESTADO: Trava para impedir que o automático sobrescreva o manual ---
+    const [isIdManuallyEdited, setIsIdManuallyEdited] = useState(false);
+
     const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
     const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
     
@@ -28,8 +32,11 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
     const [status, setStatus] = useState<ServiceStatus>('PENDING');
 
-    // --- EFEITO PARA GERAR NÚMERO DO PEDIDO AUTOMÁTICO (ATUALIZADO) ---
+    // --- EFEITO PARA GERAR NÚMERO DO PEDIDO AUTOMÁTICO (CORRIGIDO) ---
     useEffect(() => {
+        // SE O USUÁRIO JÁ EDITOU MANUALMENTE, NÃO GERA AUTOMÁTICO
+        if (isIdManuallyEdited) return;
+
         const generateOrderId = async () => {
             try {
                 // 1. Busca todas as corridas
@@ -48,7 +55,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                 const [year, month, day] = serviceDate.split('-');
 
                 // 5. Formata: Sequencia (2 digitos) + Dia (2 digitos) + Mês (2 digitos)
-                // Ex: Seq 1, Dia 15, Mês 03 -> 011503
                 const seqStr = sequence.toString().padStart(2, '0');
 
                 setManualOrderId(`${seqStr}${day}${month}`);
@@ -59,7 +65,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
         };
 
         generateOrderId();
-    }, [serviceDate]); // Recalcula sempre que a data mudar
+    }, [serviceDate, isIdManuallyEdited]); // Adicionado isIdManuallyEdited nas dependências
 
     const handleAddAddress = (type: 'pickup' | 'delivery') => {
         if (type === 'pickup') {
@@ -121,7 +127,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
             // Novos Campos Numéricos (R$)
             waitingTime: parseFloat(waitingTime) || 0, 
             extraFee: parseFloat(extraFee) || 0,
-            manualOrderId: manualOrderId, // Salvando o ID gerado ou editado
+            manualOrderId: manualOrderId, // Salvando o ID que está no estado (manual ou auto)
 
             requesterName: requester,
             date: serviceDate,
@@ -218,7 +224,11 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                         type="text"
                                         className="w-full pl-10 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium uppercase"
                                         value={manualOrderId}
-                                        onChange={e => setManualOrderId(e.target.value)}
+                                        onChange={e => {
+                                            setManualOrderId(e.target.value);
+                                            // AQUI ATIVAMOS A TRAVA: O usuário mexeu, então o automático para
+                                            setIsIdManuallyEdited(true); 
+                                        }}
                                         placeholder="010503"
                                     />
                                 </div>
