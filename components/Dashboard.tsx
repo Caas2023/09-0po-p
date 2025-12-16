@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
 import { Client, ServiceRecord, ExpenseRecord } from '../types';
@@ -10,7 +9,8 @@ interface DashboardProps {
   expenses: ExpenseRecord[];
 }
 
-type TimeFrame = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+// 1. Adicionado 'CUSTOM' ao tipo TimeFrame
+type TimeFrame = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'CUSTOM';
 
 const getLocalDateStr = (d: Date) => {
     const year = d.getFullYear();
@@ -21,6 +21,10 @@ const getLocalDateStr = (d: Date) => {
 
 export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expenses }) => {
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('MONTHLY');
+  
+  // 2. Novos estados para as datas personalizadas
+  const [customStart, setCustomStart] = useState(getLocalDateStr(new Date()));
+  const [customEnd, setCustomEnd] = useState(getLocalDateStr(new Date()));
 
   // 1. Filter Data based on TimeFrame relative to TODAY
   const { filteredServices, filteredExpenses, dateLabel } = useMemo(() => {
@@ -28,9 +32,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
     // Normalize to start of day for easier calculation logic, though we use strings for comparison
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
-    const currentDate = now.getDate();
-    const currentDayOfWeek = now.getDay(); // 0 = Sunday
-
+    
     let startStr = '';
     let endStr = '';
     let label = '';
@@ -65,6 +67,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
         startStr = getLocalDateStr(start);
         endStr = getLocalDateStr(end);
         label = 'Este Ano';
+    } else if (timeFrame === 'CUSTOM') {
+        // 3. Lógica para o filtro Personalizado
+        startStr = customStart;
+        endStr = customEnd;
+        label = 'Período Personalizado';
     }
 
     const filterByDate = (itemDate: string) => {
@@ -77,7 +84,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
         filteredExpenses: expenses.filter(e => filterByDate(e.date)),
         dateLabel: label
     };
-  }, [services, expenses, timeFrame]);
+  }, [services, expenses, timeFrame, customStart, customEnd]); // Adicionado customStart/End nas dependências
   
   // 2. Calculate Stats based on FILTERED data
   const stats = useMemo(() => {
@@ -138,7 +145,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
              label = monthName.charAt(0).toUpperCase() + monthName.slice(1);
              order = date.getMonth();
         } else {
-             // Group by Day for Month/Week/Day
+             // Group by Day for Month/Week/Day AND CUSTOM
              key = normalizedDateStr; // YYYY-MM-DD
              label = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
              order = date.getTime();
@@ -202,7 +209,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
         </div>
 
         {/* Global Time Controls */}
-        <div className="flex bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm self-start md:self-auto overflow-x-auto max-w-full">
+        <div className="flex bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm self-start md:self-auto overflow-x-auto max-w-full items-center">
             <button 
                 onClick={() => setTimeFrame('DAILY')}
                 className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all whitespace-nowrap ${timeFrame === 'DAILY' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-white'}`}
@@ -213,20 +220,48 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
                 onClick={() => setTimeFrame('WEEKLY')}
                 className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all whitespace-nowrap ${timeFrame === 'WEEKLY' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-white'}`}
             >
-                Esta Semana
+                Semana
             </button>
             <button 
                 onClick={() => setTimeFrame('MONTHLY')}
                 className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all whitespace-nowrap ${timeFrame === 'MONTHLY' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-white'}`}
             >
-                Este Mês
+                Mês
             </button>
             <button 
                 onClick={() => setTimeFrame('YEARLY')}
                 className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all whitespace-nowrap ${timeFrame === 'YEARLY' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-white'}`}
             >
-                Este Ano
+                Ano
             </button>
+
+            {/* 4. Botão PERSONALIZADO */}
+            <button 
+                onClick={() => setTimeFrame('CUSTOM')}
+                className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1 ${timeFrame === 'CUSTOM' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-white'}`}
+            >
+                <Filter size={14} />
+                Personalizado
+            </button>
+
+            {/* 5. Inputs de Data (Só aparecem se PERSONALIZADO estiver ativo) */}
+            {timeFrame === 'CUSTOM' && (
+                <div className="flex items-center gap-2 ml-2 px-2 border-l border-slate-200 dark:border-slate-600 animate-fade-in">
+                    <input 
+                        type="date" 
+                        value={customStart}
+                        onChange={(e) => setCustomStart(e.target.value)}
+                        className="p-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-transparent dark:text-white outline-none focus:border-blue-500"
+                    />
+                    <span className="text-slate-400 font-bold">-</span>
+                    <input 
+                        type="date" 
+                        value={customEnd}
+                        onChange={(e) => setCustomEnd(e.target.value)}
+                        className="p-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-transparent dark:text-white outline-none focus:border-blue-500"
+                    />
+                </div>
+            )}
         </div>
       </div>
       
@@ -239,7 +274,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
             <DollarSign size={48} className="text-blue-600" />
           </div>
           <div className="flex flex-col">
-            <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Faturamento ({dateLabel})</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400 font-bold mb-1">Faturamento</p>
             <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-400">R$ {stats.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
           </div>
         </div>
@@ -297,7 +332,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
                     <TrendingUp className="text-slate-500 dark:text-slate-400" size={20} />
-                    Evolução: {dateLabel}
+                    Evolução Financeira
                 </h2>
             </div>
 
