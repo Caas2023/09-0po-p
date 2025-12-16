@@ -16,11 +16,6 @@ interface ClientDetailsProps {
     onBack: () => void;
 }
 
-// Interface estendida localmente para garantir compatibilidade
-interface ExtendedServiceRecord extends ServiceRecord {
-    manualOrderId?: string;
-}
-
 const getPaymentMethodLabel = (method?: PaymentMethod) => {
     switch (method) {
         case 'PIX': return 'Pix';
@@ -47,7 +42,7 @@ const getLocalDateStr = (d: Date) => {
 };
 
 // --- Service Document Modal Component ---
-export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: { service: ExtendedServiceRecord; client: Client; currentUser: User; onClose: () => void }) => {
+export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: { service: ServiceRecord; client: Client; currentUser: User; onClose: () => void }) => {
     const invoiceRef = useRef<HTMLDivElement>(null);
     const [isSharing, setIsSharing] = useState(false);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -88,7 +83,7 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
         try {
             const pdf = await generatePDF();
             if (pdf) {
-                // Nome do arquivo usando o ID manual se existir
+                // Se tiver ID manual, usa ele no nome do arquivo
                 const fileId = service.manualOrderId || 'sem_id';
                 pdf.save(`Ordem_${fileId}.pdf`);
             }
@@ -185,7 +180,6 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
 
                         <div className="bg-slate-100 border-l-4 border-slate-800 p-3 mb-8 flex justify-between items-center">
                             <span className="font-bold text-lg text-slate-800 uppercase">Ordem de Serviço</span>
-                            {/* CORREÇÃO: Mostra apenas o manualOrderId se existir, caso contrário vazio */}
                             <span className="font-mono text-xl font-bold text-slate-900">
                                 {service.manualOrderId ? `#${service.manualOrderId.toUpperCase()}` : ''}
                             </span>
@@ -253,19 +247,19 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
 
 
 export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUser, onBack }) => {
-    const [services, setServices] = useState<ExtendedServiceRecord[]>([]);
+    const [services, setServices] = useState<ServiceRecord[]>([]);
 
     useEffect(() => {
-        getServicesByClient(client.id).then((data: ServiceRecord[]) => setServices(data as ExtendedServiceRecord[]));
+        getServicesByClient(client.id).then((data) => setServices(data));
     }, [client.id]);
     const [activeTab, setActiveTab] = useState<'services' | 'financial'>('services');
 
     const [showForm, setShowForm] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
-    const [viewingService, setViewingService] = useState<ExtendedServiceRecord | null>(null);
+    const [viewingService, setViewingService] = useState<ServiceRecord | null>(null);
 
     const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
-    const [serviceToDelete, setServiceToDelete] = useState<ExtendedServiceRecord | null>(null);
+    const [serviceToDelete, setServiceToDelete] = useState<ServiceRecord | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
     // Form State
@@ -325,11 +319,10 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         }
     };
 
-    const handleEditService = (service: ExtendedServiceRecord) => {
+    const handleEditService = (service: ServiceRecord) => {
         setEditingServiceId(service.id);
         setServiceDate(service.date.includes('T') ? service.date.split('T')[0] : service.date);
         
-        // --- AQUI CARREGAMOS O VALOR EXISTENTE ---
         setManualOrderId(service.manualOrderId || ''); 
         
         setPickupAddresses([...service.pickupAddresses]);
@@ -352,7 +345,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
             await deleteService(serviceToDelete.id);
             toast.success('Serviço removido com sucesso.');
             const updatedList = await getServicesByClient(client.id);
-            setServices(updatedList as ExtendedServiceRecord[]);
+            setServices(updatedList);
         } catch (error) {
             toast.error('Erro ao remover serviço.');
             console.error(error);
@@ -362,11 +355,11 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         }
     };
 
-    const handleTogglePayment = async (service: ExtendedServiceRecord) => {
+    const handleTogglePayment = async (service: ServiceRecord) => {
         const updatedService = { ...service, paid: !service.paid };
         await updateService(updatedService);
         const updatedList = await getServicesByClient(client.id);
-        setServices(updatedList as ExtendedServiceRecord[]);
+        setServices(updatedList);
     };
 
     const resetForm = () => {
@@ -410,7 +403,6 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
             waitingTime: parseFloat(waitingTime) || 0,
             extraFee: parseFloat(extraFee) || 0,
             
-            // --- SALVANDO O ID MANUAL CORRETAMENTE ---
             manualOrderId: manualOrderId.trim(), 
 
             requesterName: requester,
@@ -427,7 +419,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         }
 
         const updatedList = await getServicesByClient(client.id);
-        setServices(updatedList as ExtendedServiceRecord[]);
+        setServices(updatedList);
         resetForm();
     };
 
@@ -511,7 +503,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
 
         await bulkUpdateServices(updates);
         const updatedList = await getServicesByClient(client.id);
-        setServices(updatedList as ExtendedServiceRecord[]);
+        setServices(updatedList);
         setSelectedIds(new Set()); 
     };
 
@@ -607,7 +599,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                     const extra = s.extraFee || 0;
                     const lineTotal = baseCost + waiting + extra;
                     
-                    // CORREÇÃO: Apenas manualOrderId, sem fallback para UUID
+                    // CORREÇÃO: Removido fallback automático
                     const displayOrderId = s.manualOrderId 
                         ? s.manualOrderId 
                         : '';
