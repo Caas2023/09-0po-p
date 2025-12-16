@@ -148,19 +148,28 @@ export const deleteUser = async (id: string) => {
   await dbAdapter.deleteUser(id);
 };
 
-// --- Clients (Async Wrapper) ---
+// --- Clients (SOFT DELETE IMPLEMENTATION) ---
 
 export const getClients = async (): Promise<Client[]> => {
   const user = getCurrentUser();
   if (!user) return [];
+  // Retorna TODOS, inclusive deletados. A filtragem acontece na UI (Front-end)
   return await dbAdapter.getClients(user.id);
 };
 
-export const getClientsSync = (): Client[] => {
-  const user = getCurrentUser();
-  const all = getList<Client>(STORAGE_KEYS.CLIENTS);
-  if (user?.role === 'ADMIN') return all;
-  return all.filter(c => c.ownerId === user?.id);
+// Função para atualizar cliente (necessária para o soft delete)
+export const updateClient = async (client: Client) => {
+    // Como o adaptador pode não ter um updateClient explícito, usamos o saveClient 
+    // assumindo que ele faz "upsert" ou modificamos o localStorage manualmente
+    await dbAdapter.saveClient(client);
+    
+    // Atualiza cache local
+    const list = getList<Client>(STORAGE_KEYS.CLIENTS);
+    const index = list.findIndex(c => c.id === client.id);
+    if (index !== -1) {
+        list[index] = client;
+        saveList(STORAGE_KEYS.CLIENTS, list);
+    }
 };
 
 export const saveClient = async (client: Client) => {
@@ -170,31 +179,43 @@ export const saveClient = async (client: Client) => {
   }
   await dbAdapter.saveClient(client);
   const list = getList<Client>(STORAGE_KEYS.CLIENTS);
-  list.push(client);
+  
+  // Verifica se já existe para não duplicar no LocalStorage
+  const index = list.findIndex(c => c.id === client.id);
+  if(index !== -1) {
+      list[index] = client;
+  } else {
+      list.push(client);
+  }
   saveList(STORAGE_KEYS.CLIENTS, list);
 };
 
+// SOFT DELETE
 export const deleteClient = async (id: string) => {
-  await dbAdapter.deleteClient(id);
-  const list = getList<Client>(STORAGE_KEYS.CLIENTS);
-  const newList = list.filter(c => c.id !== id);
-  saveList(STORAGE_KEYS.CLIENTS, newList);
+  const clients = await getClients();
+  const client = clients.find(c => c.id === id);
+  if (client) {
+      client.deletedAt = new Date().toISOString();
+      await updateClient(client); 
+  }
 };
 
-// --- Services (Async Wrapper) ---
+// RESTORE
+export const restoreClient = async (id: string) => {
+    const clients = await getClients();
+    const client = clients.find(c => c.id === id);
+    if (client) {
+        client.deletedAt = undefined;
+        await updateClient(client);
+    }
+};
+
+// --- Services (SOFT DELETE IMPLEMENTATION) ---
 
 export const getServices = async (): Promise<ServiceRecord[]> => {
   const user = getCurrentUser();
   if (!user) return [];
   return await dbAdapter.getServices(user.id);
-};
-
-export const getServicesSync = (): ServiceRecord[] => {
-  const user = getCurrentUser();
-  const all = getList<ServiceRecord>(STORAGE_KEYS.SERVICES);
-  const userClients = new Set(getClientsSync().map(c => c.id));
-  if (user?.role === 'ADMIN') return all;
-  return all.filter(s => userClients.has(s.clientId));
 };
 
 export const saveService = async (service: ServiceRecord) => {
@@ -218,11 +239,24 @@ export const updateService = async (service: ServiceRecord) => {
   }
 };
 
+// SOFT DELETE
 export const deleteService = async (id: string) => {
-  await dbAdapter.deleteService(id);
-  const list = getList<ServiceRecord>(STORAGE_KEYS.SERVICES);
-  const newList = list.filter(s => s.id !== id);
-  saveList(STORAGE_KEYS.SERVICES, newList);
+  const services = await getServices();
+  const service = services.find(s => s.id === id);
+  if (service) {
+      service.deletedAt = new Date().toISOString();
+      await updateService(service);
+  }
+};
+
+// RESTORE
+export const restoreService = async (id: string) => {
+    const services = await getServices();
+    const service = services.find(s => s.id === id);
+    if (service) {
+        service.deletedAt = undefined;
+        await updateService(service);
+    }
 };
 
 export const bulkUpdateServices = async (updates: ServiceRecord[]) => {
