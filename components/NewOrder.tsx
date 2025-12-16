@@ -14,17 +14,17 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
     const [selectedClientId, setSelectedClientId] = useState<string>('');
     const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
     
-    // --- ALTERAÇÃO: Removida a lógica automática. O campo agora é puramente manual. ---
+    // --- CAMPO AGORA É 100% MANUAL ---
     const [manualOrderId, setManualOrderId] = useState(''); 
 
     const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
     const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
     
     // Estados Financeiros
-    const [cost, setCost] = useState('');       // Valor Base da Corrida
+    const [cost, setCost] = useState('');
     const [driverFee, setDriverFee] = useState('');
-    const [waitingTime, setWaitingTime] = useState(''); // Valor Espera (R$)
-    const [extraFee, setExtraFee] = useState('');       // Taxa Extra (R$)
+    const [waitingTime, setWaitingTime] = useState(''); 
+    const [extraFee, setExtraFee] = useState('');
     
     const [requester, setRequester] = useState('');
     const [paid, setPaid] = useState(false);
@@ -79,20 +79,20 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
             return;
         }
 
+        // Montagem do objeto com o ID Manual garantido
         const serviceData: any = {
             id: crypto.randomUUID(),
             ownerId: '', 
             clientId: selectedClientId,
             pickupAddresses: cleanPickups,
             deliveryAddresses: cleanDeliveries,
-            cost: parseFloat(cost), // Valor base
+            cost: parseFloat(cost),
             driverFee: parseFloat(driverFee) || 0,
             
-            // Novos Campos Numéricos (R$)
             waitingTime: parseFloat(waitingTime) || 0, 
             extraFee: parseFloat(extraFee) || 0,
             
-            // Aqui garantimos que o valor manual seja salvo exatamente como digitado
+            // GARANTE QUE O VALOR MANUAL SEJA SALVO
             manualOrderId: manualOrderId.trim(), 
 
             requesterName: requester,
@@ -106,7 +106,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
         onSave();
     };
 
-    // Cálculo visual para o usuário
+    // Cálculos visuais
     const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
     const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
 
@@ -139,7 +139,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
             </div>
 
             <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 overflow-hidden">
-                {/* Seleção de Cliente */}
                 <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
                     <label className="block text-sm font-bold text-slate-800 dark:text-white mb-2">Selecione o Cliente</label>
                     <div className="relative">
@@ -161,9 +160,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                 </div>
 
                 <div className="p-6 space-y-8">
-                    {/* Data, Pedido e Solicitante */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Grupo Data e Pedido */}
                         <div className="flex gap-4">
                             <div className="flex-1">
                                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Data</label>
@@ -209,9 +206,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                         </div>
                     </div>
 
-                    {/* Endereços */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {/* Pickup */}
                         <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800/30">
                             <h3 className="font-bold text-blue-800 dark:text-blue-400 flex items-center gap-2 mb-2">
                                 <div className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400"></div>
@@ -243,7 +238,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                             </button>
                         </div>
 
-                        {/* Delivery */}
                         <div className="space-y-3 p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-200 dark:border-emerald-800/30">
                             <h3 className="font-bold text-emerald-800 dark:text-emerald-400 flex items-center gap-2 mb-2">
                                 <div className="w-2 h-2 rounded-full bg-emerald-600 dark:bg-emerald-400"></div>
@@ -276,7 +270,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                         </div>
                     </div>
 
-                    {/* Área Financeira */}
                     <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
                         <h3 className="font-bold text-slate-800 dark:text-white mb-4">Financeiro e Adicionais</h3>
                         
@@ -319,7 +312,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                 </div>
                             </div>
 
-                            {/* Valor de Espera (R$) */}
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Valor Espera (R$)</label>
                                 <div className="relative">
@@ -338,7 +330,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                                 <p className="text-[10px] text-slate-400 mt-1">Soma no total do sistema</p>
                             </div>
 
-                            {/* Taxa Extra (R$) */}
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Taxa Extra (R$)</label>
                                 <div className="relative">
@@ -358,7 +349,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                             </div>
                         </div>
 
-                        {/* Visualizador de Total */}
                         <div className="mt-4 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg flex justify-between items-center border border-slate-200 dark:border-slate-600">
                             <div>
                                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total Interno (Base + Espera)</span>
