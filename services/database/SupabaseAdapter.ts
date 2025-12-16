@@ -51,7 +51,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
             ownerId: d.owner_id,
             createdAt: d.created_at,
             contactPerson: d.contact_person,
-            deletedAt: d.deleted_at // <--- Lendo o campo do banco
+            deletedAt: d.deleted_at 
         })) as Client[];
     }
 
@@ -67,18 +67,17 @@ export class SupabaseAdapter implements DatabaseAdapter {
             contact_person: client.contactPerson,
             cnpj: client.cnpj,
             created_at: client.createdAt,
-            deleted_at: client.deletedAt // <--- Enviando para o banco
+            // CORREÇÃO: Usa '|| null' para garantir que limpe o campo se for undefined
+            deleted_at: client.deletedAt || null 
         };
         
-        // MUDANÇA IMPORTANTE: De .insert() para .upsert()
-        // Isso permite atualizar o cliente (para marcar como deletado) sem dar erro de ID duplicado
         const { error } = await this.supabase.from('clients').upsert(payload);
         
         if (error) console.error('Supabase upsert error (client):', error);
     }
 
     async deleteClient(id: string): Promise<void> {
-        // Esse método apaga permanentemente. O "Soft Delete" usa o saveClient/updateClient.
+        // Exclusão física (apenas se necessário, o app usa soft delete via saveClient)
         const { error } = await this.supabase.from('clients').delete().eq('id', id);
         if (error) {
             console.error('Supabase delete error:', error);
@@ -104,7 +103,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
             waitingTime: d.waiting_time, 
             extraFee: d.extra_fee,
             manualOrderId: d.manual_order_id,
-            deletedAt: d.deleted_at // <--- Lendo o campo do banco
+            deletedAt: d.deleted_at
         })) as ServiceRecord[];
     }
 
@@ -125,9 +124,9 @@ export class SupabaseAdapter implements DatabaseAdapter {
             waiting_time: service.waitingTime,
             extra_fee: service.extraFee,
             manual_order_id: service.manualOrderId,
-            deleted_at: service.deletedAt // <--- Enviando para o banco
+            // CORREÇÃO: Usa '|| null' para garantir que limpe o campo se for undefined
+            deleted_at: service.deletedAt || null
         };
-        // Upsert garante que salva ou atualiza
         const { error } = await this.supabase.from('services').upsert(payload);
         if (error) console.error('Supabase insert error (service):', error);
     }
@@ -146,7 +145,8 @@ export class SupabaseAdapter implements DatabaseAdapter {
             waiting_time: service.waitingTime,
             extra_fee: service.extraFee,
             manual_order_id: service.manualOrderId,
-            deleted_at: service.deletedAt // <--- Atualizando o campo no banco
+            // CORREÇÃO: Usa '|| null' para garantir que limpe o campo se for undefined
+            deleted_at: service.deletedAt || null
         };
         const { error } = await this.supabase.from('services').update(payload).eq('id', service.id);
         if (error) console.error('Supabase update error (service):', error);
