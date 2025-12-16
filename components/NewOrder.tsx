@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Client, ServiceRecord, PaymentMethod, ServiceStatus } from '../types';
-import { saveService, getServices } from '../services/storageService'; 
-import { ArrowLeft, MapPin, Plus, X, User, Calendar, DollarSign, Bike, CheckCircle, Clock, AlertCircle, Hash, Timer } from 'lucide-react';
+import { saveService, getServices } from '../services/storageService';
+import { analyzeInvoiceImage } from '../services/geminiService';
+import { ArrowLeft, MapPin, Plus, X, User, Calendar, DollarSign, Bike, CheckCircle, Hash, Timer, Camera, Loader2, Building2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface NewOrderProps {
     clients: Client[];
@@ -18,48 +20,100 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
     const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
     
     // Estados Financeiros
-    const [cost, setCost] = useState('');       // Valor Base da Corrida
+    const [cost, setCost] = useState('');       
     const [driverFee, setDriverFee] = useState('');
-    const [waitingTime, setWaitingTime] = useState(''); // Valor Espera (R$)
-    const [extraFee, setExtraFee] = useState('');       // Taxa Extra (R$)
+    const [waitingTime, setWaitingTime] = useState(''); 
+    const [extraFee, setExtraFee] = useState('');       
     
     const [requester, setRequester] = useState('');
     const [paid, setPaid] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
     const [status, setStatus] = useState<ServiceStatus>('PENDING');
 
-    // --- EFEITO PARA GERAR NÚMERO DO PEDIDO AUTOMÁTICO (ATUALIZADO) ---
+    const [isAnalyzing, setIsAnalyzing] = useState(false); 
+
+    // --- EFEITO PARA GERAR NÚMERO DO PEDIDO AUTOMÁTICO ---
     useEffect(() => {
+        if (manualOrderId !== '') return;
+
         const generateOrderId = async () => {
             try {
-                // 1. Busca todas as corridas
                 const allServices = await getServices();
-                
-                // 2. Filtra apenas as corridas da data selecionada
                 const servicesToday = allServices.filter(s => {
                     const sDate = s.date.includes('T') ? s.date.split('T')[0] : s.date;
                     return sDate === serviceDate;
                 });
 
-                // 3. Calcula a sequência (Quantidade atual + 1)
                 const sequence = servicesToday.length + 1;
-
-                // 4. Pega dia e mês da data selecionada (YYYY-MM-DD)
                 const [year, month, day] = serviceDate.split('-');
-
-                // 5. Formata: Sequencia (2 digitos) + Dia (2 digitos) + Mês (2 digitos)
-                // Ex: Seq 1, Dia 15, Mês 03 -> 011503
                 const seqStr = sequence.toString().padStart(2, '0');
 
                 setManualOrderId(`${seqStr}${day}${month}`);
-
             } catch (error) {
                 console.error("Erro ao gerar número do pedido:", error);
             }
         };
 
         generateOrderId();
-    }, [serviceDate]); // Recalcula sempre que a data mudar
+    }, [serviceDate, manualOrderId]);
+
+    // --- FUNÇÃO: PREENCHER COM ENDEREÇO DO CLIENTE ---
+    const handleUseClientAddress = () => {
+        if (!selectedClientId) {
+            toast.error("Selecione um cliente primeiro.");
+            return;
+        }
+
+        const client = clients.find(c => c.id === selectedClientId);
+        
+        if (client && client.address) {
+            // Atualiza o primeiro endereço de coleta com o endereço do cliente
+            const newPickups = [...pickupAddresses];
+            newPickups[0] = client.address;
+            setPickupAddresses(newPickups);
+            toast.success("Endereço do cliente aplicado na coleta!");
+        } else {
+            toast.warning("Este cliente não possui endereço cadastrado.");
+        }
+    };
+
+    // --- FUNÇÃO PARA LER FOTO DA NOTA ---
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsAnalyzing(true);
+        toast.info("Analisando nota fiscal... Aguarde.");
+
+        try {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = async () => {
+                const base64Image = reader.result as string;
+                
+                try {
+                    const data = await analyzeInvoiceImage(base64Image);
+                    
+                    if (data.pickupAddress) setPickupAddresses([data.pickupAddress]);
+                    if (data.deliveryAddress) setDeliveryAddresses([data.deliveryAddress]);
+                    if (data.date) setServiceDate(data.date);
+                    if (data.orderId) setManualOrderId(data.orderId.replace(/\D/g, '').slice(-6)); 
+                    if (data.requesterName) setRequester(data.requesterName);
+
+                    toast.success("Dados preenchidos via Nota Fiscal!");
+                } catch (err) {
+                    console.error(err);
+                    toast.error("Erro ao ler a nota. Tente uma foto mais clara.");
+                } finally {
+                    setIsAnalyzing(false);
+                }
+            };
+        } catch (error) {
+            console.error(error);
+            setIsAnalyzing(false);
+            toast.error("Erro ao processar imagem.");
+        }
+    };
 
     const handleAddAddress = (type: 'pickup' | 'delivery') => {
         if (type === 'pickup') {
@@ -115,14 +169,11 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
             clientId: selectedClientId,
             pickupAddresses: cleanPickups,
             deliveryAddresses: cleanDeliveries,
-            cost: parseFloat(cost), // Valor base
+            cost: parseFloat(cost),
             driverFee: parseFloat(driverFee) || 0,
-            
-            // Novos Campos Numéricos (R$)
             waitingTime: parseFloat(waitingTime) || 0, 
             extraFee: parseFloat(extraFee) || 0,
-            manualOrderId: manualOrderId, // Salvando o ID gerado ou editado
-
+            manualOrderId: manualOrderId, 
             requesterName: requester,
             date: serviceDate,
             paid: paid,
@@ -134,7 +185,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
         onSave();
     };
 
-    // Cálculo visual para o usuário
     const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
     const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
 
@@ -154,7 +204,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
 
     return (
         <div className="max-w-4xl mx-auto animate-slide-up">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
                 <div className="flex items-center gap-4">
                     <button onClick={onCancel} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors">
                         <ArrowLeft size={24} />
@@ -163,6 +213,26 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Nova Corrida</h1>
                         <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Preencha os dados do serviço</p>
                     </div>
+                </div>
+
+                {/* BOTÃO DE LER NOTA FISCAL (IA) */}
+                <div className="relative">
+                    <input 
+                        type="file" 
+                        accept="image/*" 
+                        capture="environment"
+                        className="hidden" 
+                        id="invoice-upload"
+                        onChange={handleFileUpload}
+                        disabled={isAnalyzing}
+                    />
+                    <label 
+                        htmlFor="invoice-upload" 
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-white shadow-md transition-all cursor-pointer ${isAnalyzing ? 'bg-slate-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'}`}
+                    >
+                        {isAnalyzing ? <Loader2 size={20} className="animate-spin" /> : <Camera size={20} />}
+                        {isAnalyzing ? 'Lendo Nota...' : 'Ler Nota / Foto'}
+                    </label>
                 </div>
             </div>
 
@@ -191,7 +261,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                 <div className="p-6 space-y-8">
                     {/* Data, Pedido e Solicitante */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Grupo Data e Pedido */}
                         <div className="flex gap-4">
                             <div className="flex-1">
                                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Data</label>
@@ -241,10 +310,24 @@ export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel })
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         {/* Pickup */}
                         <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800/30">
-                            <h3 className="font-bold text-blue-800 dark:text-blue-400 flex items-center gap-2 mb-2">
-                                <div className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400"></div>
-                                Coleta
-                            </h3>
+                            
+                            {/* CABEÇALHO COM BOTÃO 'USAR ENDEREÇO DA EMPRESA' */}
+                            <div className="flex justify-between items-center mb-2">
+                                <h3 className="font-bold text-blue-800 dark:text-blue-400 flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400"></div>
+                                    Coleta
+                                </h3>
+                                <button 
+                                    type="button"
+                                    onClick={handleUseClientAddress}
+                                    className="text-xs bg-white dark:bg-slate-800 border border-blue-200 dark:border-slate-600 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-slate-700 px-2 py-1 rounded-md flex items-center gap-1 font-semibold transition-colors shadow-sm"
+                                    title="Preencher com endereço do cliente selecionado"
+                                >
+                                    <Building2 size={12} />
+                                    Usar Endereço Cliente
+                                </button>
+                            </div>
+
                             {pickupAddresses.map((addr, idx) => (
                                 <div key={`pickup-${idx}`} className="flex gap-2">
                                     <div className="relative flex-1">
