@@ -24,8 +24,8 @@ export class SupabaseAdapter implements DatabaseAdapter {
     }
 
     async saveUser(user: User): Promise<void> {
-        const { error } = await this.supabase.from('users').insert(user);
-        if (error) console.error('Supabase insert error (user):', error);
+        const { error } = await this.supabase.from('users').upsert(user);
+        if (error) console.error('Supabase insert/update error (user):', error);
     }
 
     async updateUser(user: User): Promise<void> {
@@ -50,7 +50,8 @@ export class SupabaseAdapter implements DatabaseAdapter {
             ...d,
             ownerId: d.owner_id,
             createdAt: d.created_at,
-            contactPerson: d.contact_person
+            contactPerson: d.contact_person,
+            deletedAt: d.deleted_at // <--- Lendo o campo do banco
         })) as Client[];
     }
 
@@ -65,13 +66,19 @@ export class SupabaseAdapter implements DatabaseAdapter {
             address: client.address,
             contact_person: client.contactPerson,
             cnpj: client.cnpj,
-            created_at: client.createdAt
+            created_at: client.createdAt,
+            deleted_at: client.deletedAt // <--- Enviando para o banco
         };
-        const { error } = await this.supabase.from('clients').insert(payload);
-        if (error) console.error('Supabase insert error (client):', error);
+        
+        // MUDANÇA IMPORTANTE: De .insert() para .upsert()
+        // Isso permite atualizar o cliente (para marcar como deletado) sem dar erro de ID duplicado
+        const { error } = await this.supabase.from('clients').upsert(payload);
+        
+        if (error) console.error('Supabase upsert error (client):', error);
     }
 
     async deleteClient(id: string): Promise<void> {
+        // Esse método apaga permanentemente. O "Soft Delete" usa o saveClient/updateClient.
         const { error } = await this.supabase.from('clients').delete().eq('id', id);
         if (error) {
             console.error('Supabase delete error:', error);
@@ -94,11 +101,10 @@ export class SupabaseAdapter implements DatabaseAdapter {
             paymentMethod: d.payment_method,
             paid: d.paid,
             status: d.status,
-            
-            // MAPEAR OS CAMPOS (snake_case do banco -> camelCase do app)
             waitingTime: d.waiting_time, 
             extraFee: d.extra_fee,
-            manualOrderId: d.manual_order_id // <--- CORREÇÃO AQUI
+            manualOrderId: d.manual_order_id,
+            deletedAt: d.deleted_at // <--- Lendo o campo do banco
         })) as ServiceRecord[];
     }
 
@@ -116,13 +122,13 @@ export class SupabaseAdapter implements DatabaseAdapter {
             requester_name: service.requesterName,
             paid: service.paid,
             payment_method: service.paymentMethod,
-            
-            // SALVAR OS CAMPOS (camelCase do app -> snake_case do banco)
             waiting_time: service.waitingTime,
             extra_fee: service.extraFee,
-            manual_order_id: service.manualOrderId // <--- CORREÇÃO AQUI
+            manual_order_id: service.manualOrderId,
+            deleted_at: service.deletedAt // <--- Enviando para o banco
         };
-        const { error } = await this.supabase.from('services').insert(payload);
+        // Upsert garante que salva ou atualiza
+        const { error } = await this.supabase.from('services').upsert(payload);
         if (error) console.error('Supabase insert error (service):', error);
     }
 
@@ -137,11 +143,10 @@ export class SupabaseAdapter implements DatabaseAdapter {
             requester_name: service.requesterName,
             paid: service.paid,
             payment_method: service.paymentMethod,
-            
-            // ATUALIZAR CAMPOS
             waiting_time: service.waitingTime,
             extra_fee: service.extraFee,
-            manual_order_id: service.manualOrderId // <--- CORREÇÃO AQUI
+            manual_order_id: service.manualOrderId,
+            deleted_at: service.deletedAt // <--- Atualizando o campo no banco
         };
         const { error } = await this.supabase.from('services').update(payload).eq('id', service.id);
         if (error) console.error('Supabase update error (service):', error);
@@ -174,7 +179,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
             date: expense.date,
             description: expense.description
         };
-        const { error } = await this.supabase.from('expenses').insert(payload);
+        const { error } = await this.supabase.from('expenses').upsert(payload);
         if (error) console.error('Supabase insert error (expense):', error);
     }
 
