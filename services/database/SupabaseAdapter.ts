@@ -95,9 +95,10 @@ export class SupabaseAdapter implements DatabaseAdapter {
             paid: d.paid,
             status: d.status,
             
-            // MAPEAR OS CAMPOS NOVOS DO BANCO (snake_case -> camelCase)
+            // MAPEAR OS CAMPOS (snake_case do banco -> camelCase do app)
             waitingTime: d.waiting_time, 
-            extraFee: d.extra_fee        
+            extraFee: d.extra_fee,
+            manualOrderId: d.manual_order_id // <--- CORREÇÃO AQUI
         })) as ServiceRecord[];
     }
 
@@ -116,9 +117,10 @@ export class SupabaseAdapter implements DatabaseAdapter {
             paid: service.paid,
             payment_method: service.paymentMethod,
             
-            // SALVAR OS CAMPOS NOVOS (camelCase -> snake_case)
+            // SALVAR OS CAMPOS (camelCase do app -> snake_case do banco)
             waiting_time: service.waitingTime,
-            extra_fee: service.extraFee
+            extra_fee: service.extraFee,
+            manual_order_id: service.manualOrderId // <--- CORREÇÃO AQUI
         };
         const { error } = await this.supabase.from('services').insert(payload);
         if (error) console.error('Supabase insert error (service):', error);
@@ -136,9 +138,10 @@ export class SupabaseAdapter implements DatabaseAdapter {
             paid: service.paid,
             payment_method: service.paymentMethod,
             
-            // ATUALIZAR CAMPOS (camelCase -> snake_case)
+            // ATUALIZAR CAMPOS
             waiting_time: service.waitingTime,
-            extra_fee: service.extraFee
+            extra_fee: service.extraFee,
+            manual_order_id: service.manualOrderId // <--- CORREÇÃO AQUI
         };
         const { error } = await this.supabase.from('services').update(payload).eq('id', service.id);
         if (error) console.error('Supabase update error (service):', error);
