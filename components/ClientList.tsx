@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Filter, ClipboardList, Trash2, AlertTriangle, X, LayoutGrid, LayoutList, Trophy } from 'lucide-react';
+import { Search, Filter, ClipboardList, Trash2, AlertTriangle, X, LayoutGrid, LayoutList, Trophy, RotateCcw, Archive } from 'lucide-react';
 import { Client, ServiceRecord, User } from '../types';
-import { saveClient, deleteClient } from '../services/storageService';
+import { saveClient, deleteClient, restoreClient } from '../services/storageService';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -21,6 +21,9 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
     // Novo estado para controlar o modo de visualização (Grade ou Lista)
     const [viewMode, setViewMode] = useState<'GRID' | 'LIST'>('GRID');
 
+    // Estado para "Lixeira"
+    const [showTrash, setShowTrash] = useState(false);
+
     // Estado para controle do Modal de Exclusão
     const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -38,7 +41,7 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
 
     // Função auxiliar para contar serviços (agora usamos ela também na ordenação)
     const getServiceCount = (clientId: string) => {
-        return services.filter(s => s.clientId === clientId).length;
+        return services.filter(s => s.clientId === clientId && !s.deletedAt).length;
     };
 
     const handleAddClient = async (e: React.FormEvent) => {
@@ -78,7 +81,7 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
         setIsDeleting(true);
         try {
             await deleteClient(clientToDelete.id);
-            toast.success('Cliente removido com sucesso.');
+            toast.success('Cliente movido para lixeira.');
             onRefresh(); // Atualiza a lista
         } catch (error) {
             toast.error('Erro ao remover cliente.');
@@ -89,9 +92,17 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
         }
     };
 
+    const handleRestore = async (client: Client) => {
+        if (confirm(`Deseja restaurar o cliente ${client.name}?`)) {
+            await restoreClient(client.id);
+            toast.success('Cliente restaurado com sucesso!');
+            onRefresh();
+        }
+    };
+
     // LÓGICA DE FILTRO E ORDENAÇÃO ATUALIZADA
     const filteredAndSortedClients = useMemo(() => {
-        // 1. Filtrar
+        // 1. Filtrar por Busca, Categoria e STATUS (Deletado ou Ativo)
         const filtered = clients.filter(client => {
             const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -99,7 +110,11 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
 
             const matchesCategory = filterCategory === 'Todos' || (client.category || 'Outros') === filterCategory;
 
-            return matchesSearch && matchesCategory;
+            // Filtro Lógica de Lixeira
+            const isDeleted = !!client.deletedAt;
+            const matchesStatus = showTrash ? isDeleted : !isDeleted;
+
+            return matchesSearch && matchesCategory && matchesStatus;
         });
 
         // 2. Ordenar (Quem tem mais serviços fica em cima)
@@ -114,7 +129,7 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
             // Desempate por nome alfabético
             return a.name.localeCompare(b.name);
         });
-    }, [clients, searchTerm, filterCategory, services]);
+    }, [clients, searchTerm, filterCategory, services, showTrash]);
 
     return (
         <div className="space-y-6 animate-fade-in relative">
@@ -129,8 +144,8 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
                             </div>
                             <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Excluir Cliente?</h3>
                             <p className="text-slate-600 dark:text-slate-400 mb-6">
-                                Tem certeza que deseja remover <strong>{clientToDelete.name}</strong>? 
-                                <br/>Isso também pode afetar o histórico de serviços associados.
+                                Tem certeza que deseja mover <strong>{clientToDelete.name}</strong> para a lixeira? 
+                                <br/>Você poderá restaurá-lo depois se necessário.
                             </p>
                             
                             <div className="flex gap-3 justify-center">
@@ -155,32 +170,60 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
             )}
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Clientes</h1>
-                <div className="flex gap-2 w-full md:w-auto">
-                    {/* Botões de Alternância de Visualização */}
-                    <div className="flex bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
-                        <button 
-                            onClick={() => setViewMode('GRID')}
-                            className={`p-2 rounded-md transition-all ${viewMode === 'GRID' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-slate-400 hover:text-slate-600'}`}
-                            title="Visualização em Grade"
-                        >
-                            <LayoutGrid size={20} />
-                        </button>
-                        <button 
-                            onClick={() => setViewMode('LIST')}
-                            className={`p-2 rounded-md transition-all ${viewMode === 'LIST' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-slate-400 hover:text-slate-600'}`}
-                            title="Visualização em Lista"
-                        >
-                            <LayoutList size={20} />
-                        </button>
-                    </div>
+                <div className="flex items-center gap-2">
+                    <h1 className="text-2xl font-bold text-slate-800 dark:text-white">
+                        {showTrash ? 'Lixeira de Clientes' : 'Clientes'}
+                    </h1>
+                    {showTrash && (
+                        <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-bold rounded-md uppercase">Modo Lixeira</span>
+                    )}
+                </div>
 
-                    <button
-                        onClick={() => setIsAdding(!isAdding)}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex-1 md:flex-none"
-                    >
-                        {isAdding ? 'Cancelar' : 'Adicionar Cliente'}
-                    </button>
+                <div className="flex gap-2 w-full md:w-auto flex-wrap">
+                    {/* Botão Toggle Lixeira (Admin Only - assumindo que qualquer um com acesso a lista pode ver por enquanto ou currentUser.role === 'ADMIN') */}
+                    {currentUser.role === 'ADMIN' && (
+                        <button
+                            onClick={() => setShowTrash(!showTrash)}
+                            className={`px-3 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors ${
+                                showTrash 
+                                    ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300' 
+                                    : 'bg-white border border-slate-200 text-slate-500 hover:text-red-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:text-red-400'
+                            }`}
+                            title={showTrash ? "Voltar para Clientes Ativos" : "Ver Clientes Excluídos"}
+                        >
+                            {showTrash ? <Search size={18} /> : <Archive size={18} />}
+                            <span className="hidden sm:inline">{showTrash ? "Ver Ativos" : "Lixeira"}</span>
+                        </button>
+                    )}
+
+                    {!showTrash && (
+                        <>
+                            {/* Botões de Alternância de Visualização */}
+                            <div className="flex bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
+                                <button 
+                                    onClick={() => setViewMode('GRID')}
+                                    className={`p-2 rounded-md transition-all ${viewMode === 'GRID' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-slate-400 hover:text-slate-600'}`}
+                                    title="Visualização em Grade"
+                                >
+                                    <LayoutGrid size={20} />
+                                </button>
+                                <button 
+                                    onClick={() => setViewMode('LIST')}
+                                    className={`p-2 rounded-md transition-all ${viewMode === 'LIST' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-slate-400 hover:text-slate-600'}`}
+                                    title="Visualização em Lista"
+                                >
+                                    <LayoutList size={20} />
+                                </button>
+                            </div>
+
+                            <button
+                                onClick={() => setIsAdding(!isAdding)}
+                                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex-1 md:flex-none"
+                            >
+                                {isAdding ? 'Cancelar' : 'Adicionar Cliente'}
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -192,7 +235,7 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
                     </div>
                     <input
                         type="text"
-                        placeholder="Buscar por nome, email ou telefone..."
+                        placeholder={showTrash ? "Buscar cliente excluído..." : "Buscar por nome, email ou telefone..."}
                         className="w-full pl-10 p-3 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none shadow-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
@@ -216,7 +259,7 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
                 </div>
             </div>
 
-            {isAdding && (
+            {isAdding && !showTrash && (
                 <form onSubmit={handleAddClient} className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 animate-slide-down">
                     <h3 className="font-semibold text-slate-800 dark:text-white mb-4">Novo Cliente</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -278,35 +321,40 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
 
             {filteredAndSortedClients.length === 0 ? (
                 <div className="col-span-full py-12 text-center text-slate-400">
-                    {clients.length === 0
-                        ? "Você ainda não possui clientes. Adicione o primeiro acima!"
-                        : "Nenhum cliente encontrado para a busca selecionada."}
+                    {showTrash 
+                        ? "A lixeira está vazia." 
+                        : (clients.length === 0 
+                            ? "Você ainda não possui clientes. Adicione o primeiro acima!" 
+                            : "Nenhum cliente encontrado para a busca selecionada.")}
                 </div>
             ) : (
-                <div className={viewMode === 'GRID' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "flex flex-col gap-3"}>
+                <div className={(viewMode === 'GRID' && !showTrash) ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "flex flex-col gap-3"}>
                     {filteredAndSortedClients.map((client, index) => {
                         const count = getServiceCount(client.id);
                         
-                        // Destaque visual para o TOP 3 (apenas no modo GRID)
-                        const isTopRank = index < 3 && count > 0;
+                        // Destaque visual para o TOP 3 (apenas no modo GRID e não lixeira)
+                        const isTopRank = !showTrash && index < 3 && count > 0;
                         const rankColor = index === 0 ? 'text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200' : 
                                           index === 1 ? 'text-slate-400 bg-slate-100 dark:bg-slate-700 border-slate-300' :
                                           'text-orange-500 bg-orange-50 dark:bg-orange-900/20 border-orange-200';
 
-                        if (viewMode === 'LIST') {
-                            // --- MODO LISTA ---
+                        // MODO LISTA OU LIXEIRA (Sempre em lista na lixeira)
+                        if (viewMode === 'LIST' || showTrash) {
                             return (
                                 <div
                                     key={client.id}
-                                    onClick={() => navigate(`/clients/${client.id}`)}
-                                    className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer flex justify-between items-center group"
+                                    onClick={() => !showTrash && navigate(`/clients/${client.id}`)}
+                                    className={`bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 transition-colors flex justify-between items-center group ${!showTrash ? 'hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer' : 'opacity-75 hover:opacity-100'}`}
                                 >
                                     <div className="flex items-center gap-4">
                                         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${isTopRank ? rankColor : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
-                                            {isTopRank ? <Trophy size={14} /> : index + 1}
+                                            {isTopRank ? <Trophy size={14} /> : (showTrash ? <Trash2 size={14} /> : index + 1)}
                                         </div>
                                         <div>
-                                            <h3 className="font-semibold text-slate-800 dark:text-white group-hover:text-blue-600">{client.name}</h3>
+                                            <h3 className="font-semibold text-slate-800 dark:text-white group-hover:text-blue-600">
+                                                {client.name}
+                                                {showTrash && <span className="ml-2 text-xs text-red-500">(Excluído)</span>}
+                                            </h3>
                                             <p className="text-xs text-slate-500 dark:text-slate-400">{client.category}</p>
                                         </div>
                                     </div>
@@ -317,25 +365,39 @@ export function ClientList({ clients, services, currentUser, onRefresh }: Client
                                             <p className="text-xs text-slate-400 dark:text-slate-500">{client.contactPerson || '-'}</p>
                                         </div>
                                         
-                                        <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700">
-                                            <ClipboardList size={16} className="text-blue-500" />
-                                            <span className="font-bold text-slate-700 dark:text-slate-200">{count}</span>
-                                        </div>
+                                        {!showTrash && (
+                                            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700">
+                                                <ClipboardList size={16} className="text-blue-500" />
+                                                <span className="font-bold text-slate-700 dark:text-slate-200">{count}</span>
+                                            </div>
+                                        )}
 
-                                        <button 
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setClientToDelete(client);
-                                            }}
-                                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
+                                        {showTrash ? (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); handleRestore(client); }}
+                                                className="p-2 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-full transition-colors flex items-center gap-2"
+                                                title="Restaurar Cliente"
+                                            >
+                                                <RotateCcw size={16} />
+                                                <span className="text-sm font-bold hidden sm:inline">Restaurar</span>
+                                            </button>
+                                        ) : (
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setClientToDelete(client);
+                                                }}
+                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors"
+                                                title="Mover para Lixeira"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             );
                         } else {
-                            // --- MODO GRADE (Cartões Atuais) ---
+                            // --- MODO GRADE (Cartões Atuais - Apenas Ativos) ---
                             return (
                                 <div
                                     key={client.id}
