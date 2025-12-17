@@ -41,7 +41,7 @@ const getLocalDateStr = (d: Date) => {
     return `${year}-${month}-${day}`;
 };
 
-// --- NOVO: MODAL DE HISTÓRICO (ÚNICA ADIÇÃO GRANDE) ---
+// --- MODAL DE HISTÓRICO ---
 const ServiceHistoryModal = ({ service, onClose }: { service: ServiceRecord; onClose: () => void }) => {
     const [logs, setLogs] = useState<ServiceLog[]>([]);
     const [loading, setLoading] = useState(true);
@@ -120,7 +120,7 @@ const ServiceHistoryModal = ({ service, onClose }: { service: ServiceRecord; onC
     );
 };
 
-// --- MANTENDO O MODAL DE PDF IGUAL AO QUE ERA ---
+// --- MODAL DE DOCUMENTO PDF ---
 export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: { service: ServiceRecord; client: Client; currentUser: User; onClose: () => void }) => {
     const invoiceRef = useRef<HTMLDivElement>(null);
     const [isSharing, setIsSharing] = useState(false);
@@ -423,7 +423,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         setShowForm(true);
         setActiveTab('services'); 
 
-        // --- ROLAGEM AUTOMÁTICA PARA O TOPO (MANTIDO) ---
+        // --- ROLAGEM AUTOMÁTICA PARA O TOPO ---
         setTimeout(() => {
             if (topRef.current) {
                 topRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -443,7 +443,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 date: getLocalDateStr(new Date()), // Data de Hoje
                 paid: false, // Reinicia pagamento
                 status: 'PENDING', // Reinicia Status
-                manualOrderId: '', // Limpa o ID manual para não dar conflito (usuário pode editar depois)
+                manualOrderId: '', // Limpa o ID manual
             };
     
             await saveService(newService);
@@ -934,14 +934,6 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 />
             )}
 
-            {/* --- ADIÇÃO: MODAL DE HISTÓRICO --- */}
-            {viewingHistoryService && (
-                <ServiceHistoryModal 
-                    service={viewingHistoryService} 
-                    onClose={() => setViewingHistoryService(null)} 
-                />
-            )}
-
             {/* Header Area */}
             <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
@@ -1094,7 +1086,20 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                         <div key={idx} className="flex gap-2 relative">
                                             <MapPin size={16} className="absolute left-3 top-3 text-blue-500" />
                                             <input className="w-full pl-9 p-2.5 border border-slate-700 rounded-lg bg-slate-800 text-white text-sm focus:border-blue-500 outline-none" value={addr} onChange={e => handleAddressChange('pickup', idx, e.target.value)} placeholder="Endereço de retirada" />
-                                            {pickupAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('pickup', idx)}><X size={16} className="text-red-400" /></button>}
+                                            
+                                            {/* --- BOTÃO COLAR ENDEREÇO CLIENTE (COLETA) --- */}
+                                            {client.address && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleAddressChange('pickup', idx, client.address || '')}
+                                                    title="Usar endereço do cliente"
+                                                    className="absolute right-8 top-2.5 text-slate-400 hover:text-blue-500 transition-colors"
+                                                >
+                                                    <Building size={16} />
+                                                </button>
+                                            )}
+
+                                            {pickupAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('pickup', idx)} className="absolute right-2 top-2.5"><X size={16} className="text-red-400" /></button>}
                                         </div>
                                     ))}
                                     <button type="button" onClick={() => handleAddAddress('pickup')} className="text-xs font-bold text-blue-400 flex items-center gap-1 mt-1"><Plus size={14} /> Adicionar Parada</button>
@@ -1105,7 +1110,20 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                         <div key={idx} className="flex gap-2 relative">
                                             <MapPin size={16} className="absolute left-3 top-3 text-emerald-500" />
                                             <input className="w-full pl-9 p-2.5 border border-slate-700 rounded-lg bg-slate-800 text-white text-sm focus:border-emerald-500 outline-none" value={addr} onChange={e => handleAddressChange('delivery', idx, e.target.value)} placeholder="Endereço de destino" />
-                                            {deliveryAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('delivery', idx)}><X size={16} className="text-red-400" /></button>}
+                                            
+                                            {/* --- BOTÃO COLAR ENDEREÇO CLIENTE (ENTREGA) --- */}
+                                            {client.address && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleAddressChange('delivery', idx, client.address || '')}
+                                                    title="Usar endereço do cliente"
+                                                    className="absolute right-8 top-2.5 text-slate-400 hover:text-emerald-500 transition-colors"
+                                                >
+                                                    <Building size={16} />
+                                                </button>
+                                            )}
+
+                                            {deliveryAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('delivery', idx)} className="absolute right-2 top-2.5"><X size={16} className="text-red-400" /></button>}
                                         </div>
                                     ))}
                                     <button type="button" onClick={() => handleAddAddress('delivery')} className="text-xs font-bold text-emerald-400 flex items-center gap-1 mt-1"><Plus size={14} /> Adicionar Parada</button>
@@ -1576,7 +1594,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                                         </button>
                                                     ) : (
                                                         <>
-                                                            {/* --- BOTÃO DE HISTÓRICO ADICIONADO AQUI --- */}
+                                                            {/* --- BOTÃO DE HISTÓRICO AQUI --- */}
                                                             {currentUser.role === 'ADMIN' && (
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); setViewingHistoryService(service); }}
