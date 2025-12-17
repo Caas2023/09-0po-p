@@ -1103,7 +1103,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                                     title="Copiar endereço do cadastro"
                                                 >
                                                     <Building size={12} />
-                                                    Copiar do Cadastro
+                                                    endereço cliente
                                                 </button>
                                             )}
 
