@@ -1,15 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
 import { Client, ServiceRecord, ExpenseRecord } from '../types';
 import { TrendingUp, DollarSign, Bike, Wallet, Banknote, QrCode, CreditCard, CalendarDays, Calendar, Filter, Utensils, Fuel, Clock, Users, Trophy, Package } from 'lucide-react';
+import { getServices, getExpenses, getClients } from '../services/storageService';
 
 interface DashboardProps {
-  clients: Client[];
-  services: ServiceRecord[];
-  expenses: ExpenseRecord[];
+  currentUser?: any; 
 }
 
-// 1. Adicionado 'CUSTOM' ao tipo TimeFrame
 type TimeFrame = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'CUSTOM';
 
 const getLocalDateStr = (d: Date) => {
@@ -19,79 +17,104 @@ const getLocalDateStr = (d: Date) => {
     return `${year}-${month}-${day}`;
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expenses }) => {
+export const Dashboard: React.FC<DashboardProps> = () => {
+  // Estados de dados
+  const [clients, setClients] = useState<Client[]>([]);
+  const [services, setServices] = useState<ServiceRecord[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Estados de filtro
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('MONTHLY');
-  
-  // 2. Novos estados para as datas personalizadas
   const [customStart, setCustomStart] = useState(getLocalDateStr(new Date()));
   const [customEnd, setCustomEnd] = useState(getLocalDateStr(new Date()));
 
-  // 1. Filter Data based on TimeFrame relative to TODAY
-  const { filteredServices, filteredExpenses, dateLabel } = useMemo(() => {
+  // 1. Determina as datas de Início e Fim baseado no Filtro
+  const { startStr, endStr, dateLabel } = useMemo(() => {
     const now = new Date();
-    // Normalize to start of day for easier calculation logic, though we use strings for comparison
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
     
-    let startStr = '';
-    let endStr = '';
-    let label = '';
+    let s = '';
+    let e = '';
+    let l = '';
 
     if (timeFrame === 'DAILY') {
-        startStr = getLocalDateStr(now);
-        endStr = startStr;
-        label = 'Hoje';
+        s = getLocalDateStr(now);
+        e = s;
+        l = 'Hoje';
     } else if (timeFrame === 'WEEKLY') {
-        // Start of week (Sunday)
         const start = new Date(now);
         const day = start.getDay(); 
         const diff = start.getDate() - day;
         start.setDate(diff);
-        startStr = getLocalDateStr(start);
+        s = getLocalDateStr(start);
         
-        // End of week (Saturday)
         const end = new Date(start);
         end.setDate(start.getDate() + 6);
-        endStr = getLocalDateStr(end);
-        
-        label = 'Esta Semana';
+        e = getLocalDateStr(end);
+        l = 'Esta Semana';
     } else if (timeFrame === 'MONTHLY') {
         const start = new Date(currentYear, currentMonth, 1);
-        const end = new Date(currentYear, currentMonth + 1, 0); // Last day of month
-        startStr = getLocalDateStr(start);
-        endStr = getLocalDateStr(end);
-        label = 'Este Mês';
+        const end = new Date(currentYear, currentMonth + 1, 0);
+        s = getLocalDateStr(start);
+        e = getLocalDateStr(end);
+        l = 'Este Mês';
     } else if (timeFrame === 'YEARLY') {
         const start = new Date(currentYear, 0, 1);
         const end = new Date(currentYear, 11, 31);
-        startStr = getLocalDateStr(start);
-        endStr = getLocalDateStr(end);
-        label = 'Este Ano';
+        s = getLocalDateStr(start);
+        e = getLocalDateStr(end);
+        l = 'Este Ano';
     } else if (timeFrame === 'CUSTOM') {
-        // 3. Lógica para o filtro Personalizado
-        startStr = customStart;
-        endStr = customEnd;
-        label = 'Período Personalizado';
+        s = customStart;
+        e = customEnd;
+        l = 'Período Personalizado';
     }
+    return { startStr: s, endStr: e, dateLabel: l };
+  }, [timeFrame, customStart, customEnd]);
 
-    const filterByDate = (itemDate: string) => {
-        const dateStr = itemDate.includes('T') ? itemDate.split('T')[0] : itemDate;
-        return dateStr >= startStr && dateStr <= endStr;
+  // 2. Busca os dados (Backend já filtra data, mas Front garante limpeza)
+  useEffect(() => {
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const clientsData = await getClients();
+            setClients(clientsData);
+
+            const [servicesData, expensesData] = await Promise.all([
+                getServices(startStr, endStr),
+                getExpenses(startStr, endStr)
+            ]);
+
+            setServices(servicesData);
+            setExpenses(expensesData);
+        } catch (error) {
+            console.error("Erro ao atualizar dashboard:", error);
+        } finally {
+            setLoading(false);
+        }
     };
 
+    if (startStr && endStr) {
+        fetchData();
+    }
+  }, [startStr, endStr]); 
+
+  // 3. FILTRAGEM FINAL DE SEGURANÇA (Remove itens da lixeira)
+  const { filteredServices, filteredExpenses } = useMemo(() => {
     return {
-        filteredServices: services.filter(s => filterByDate(s.date)),
-        filteredExpenses: expenses.filter(e => filterByDate(e.date)),
-        dateLabel: label
+        // AQUI É A CORREÇÃO: Filtra serviços que NÃO têm data de exclusão
+        filteredServices: services.filter(s => !s.deletedAt),
+        filteredExpenses: expenses 
     };
-  }, [services, expenses, timeFrame, customStart, customEnd]); // Adicionado customStart/End nas dependências
+  }, [services, expenses]);
   
-  // 2. Calculate Stats based on FILTERED data
+  // 4. Cálculos Financeiros (Usando apenas os filtrados)
   const stats = useMemo(() => {
     const totalRevenue = filteredServices.reduce((sum, s) => sum + s.cost, 0);
     const totalDriverPay = filteredServices.reduce((sum, s) => sum + (s.driverFee || 0), 0);
     
-    // Calculate Pending (Not Paid)
     const totalPending = filteredServices
         .filter(s => !s.paid)
         .reduce((sum, s) => sum + s.cost, 0);
@@ -101,7 +124,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
         return acc;
     }, {} as Record<string, number>);
 
-    // Revenue by Payment Method
     const revenueByMethod = filteredServices.reduce((acc, curr) => {
         const method = curr.paymentMethod || 'PIX';
         acc[method] = (acc[method] || 0) + curr.cost;
@@ -123,14 +145,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
     };
   }, [filteredServices, filteredExpenses]);
 
-  // 3. Prepare Chart Data based on TimeFrame granularity
+  // 5. Dados do Gráfico
   const chartData = useMemo(() => {
     const dataMap = new Map<string, { name: string, revenue: number, cost: number, profit: number, sortKey: number }>();
 
     const addToMap = (dateStr: string, revenue: number, cost: number) => {
         if (!dateStr) return;
         const normalizedDateStr = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-        // Parse date using Y,M,D components to avoid timezone shifts
         const [y, m, d] = normalizedDateStr.split('-').map(Number);
         const date = new Date(y, m - 1, d);
         
@@ -139,14 +160,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
         let order = 0;
 
         if (timeFrame === 'YEARLY') {
-             // Group by Month if viewing Year
              key = `${date.getFullYear()}-${date.getMonth()}`;
              const monthName = date.toLocaleDateString('pt-BR', { month: 'short' });
              label = monthName.charAt(0).toUpperCase() + monthName.slice(1);
              order = date.getMonth();
         } else {
-             // Group by Day for Month/Week/Day AND CUSTOM
-             key = normalizedDateStr; // YYYY-MM-DD
+             key = normalizedDateStr;
              label = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
              order = date.getTime();
         }
@@ -167,11 +186,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
     return result;
   }, [filteredServices, filteredExpenses, timeFrame]);
 
-  // 4. Top Clients Stats
+  // 6. Top Clientes
   const topClients = useMemo(() => {
     const clientStats = new Map<string, { name: string, count: number, revenue: number }>();
     
     filteredServices.forEach(s => {
+        // Importante: Considera serviços deletados? Não, pois filteredServices já removeu.
+        // Mas se o CLIENTE foi deletado, ainda mostramos o nome dele no histórico?
+        // Sim, o getClients traz todos. Se quiser esconder clientes deletados do TOP, filtre clients aqui.
         const client = clients.find(c => c.id === s.clientId);
         const name = client ? client.name : 'Desconhecido';
         const id = s.clientId;
@@ -201,6 +223,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
         <div>
             <h1 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                 Visão Geral Financeira
+                {loading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>}
             </h1>
             <p className="text-slate-500 dark:text-slate-400 text-sm flex items-center gap-1 mt-1">
                 <Calendar size={14} />
@@ -235,7 +258,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
                 Ano
             </button>
 
-            {/* 4. Botão PERSONALIZADO */}
             <button 
                 onClick={() => setTimeFrame('CUSTOM')}
                 className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1 ${timeFrame === 'CUSTOM' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-white'}`}
@@ -244,7 +266,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, services, expense
                 Personalizado
             </button>
 
-            {/* 5. Inputs de Data (Só aparecem se PERSONALIZADO estiver ativo) */}
             {timeFrame === 'CUSTOM' && (
                 <div className="flex items-center gap-2 ml-2 px-2 border-l border-slate-200 dark:border-slate-600 animate-fade-in">
                     <input 
