@@ -247,6 +247,9 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
 
 
 export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUser, onBack }) => {
+    // Referência para o TOPO da página (para onde vamos rolar)
+    const topRef = useRef<HTMLDivElement>(null);
+
     const [services, setServices] = useState<ServiceRecord[]>([]);
     // Novo estado para Lixeira de Serviços
     const [showTrash, setShowTrash] = useState(false);
@@ -339,6 +342,13 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         setIsPaid(service.paid);
         setShowForm(true);
         setActiveTab('services'); 
+
+        // --- ROLAGEM AUTOMÁTICA PARA O TOPO (ONDE O FORM ESTÁ) ---
+        setTimeout(() => {
+            if (topRef.current) {
+                topRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }, 100); // Pequeno delay para garantir que o formulário renderizou
     };
 
     const handleDuplicateService = async (originalService: ServiceRecord) => {
@@ -797,7 +807,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
 
     return (
-        <div className="space-y-6 animate-fade-in relative">
+        <div ref={topRef} className="space-y-6 animate-fade-in relative">
 
             {/* --- MODAL DE EXCLUSÃO DE SERVIÇO --- */}
             {serviceToDelete && (
