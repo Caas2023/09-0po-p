@@ -577,7 +577,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     const getFilteredServices = () => {
         let filtered = services;
 
-        // FILTRO LIXEIRA (DELETED_AT)
+        // Filtro Lógica de Lixeira
         if (showTrash) {
             filtered = filtered.filter(s => !!s.deletedAt);
         } else {
@@ -656,28 +656,228 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         return { totalPaid, totalPending, revenueByMethod };
     }, [filteredServices]);
 
-    // ... (Mantendo export PDF/CSV igual ao que estava) ...
-    // Para simplificar a resposta e evitar cortar, vou resumir:
-    // A lógica de handleExportBoleto, downloadCSV e exportExcel CONTINUA AQUI EXATAMENTE IGUAL
-    // ...
+    // --- PDF GENERATION LOGIC ---
     const handleExportBoleto = () => {
         if (isGeneratingPdf) return;
         setIsGeneratingPdf(true);
         setShowExportMenu(false);
-        // ... (Lógica do PDF mantida) ...
-        setTimeout(() => { try {
+
+        setTimeout(() => {
+            try {
                 const doc = new jsPDF('p', 'mm', 'a4');
-                // ... (Geração do PDF) ...
-                const fileName = `Relatorio_${client.name}.pdf`;
+                const pageWidth = doc.internal.pageSize.getWidth(); 
+                const marginX = 10;
+                let currentY = 15;
+
+                // Title
+                doc.setFontSize(14);
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(0);
+                doc.text("RELATÓRIO DE SERVIÇOS PRESTADOS", pageWidth / 2, currentY, { align: 'center' });
+                currentY += 10;
+
+                // Header Box
+                const boxHeight = 25; 
+                const midPage = pageWidth / 2;
+
+                doc.setDrawColor(200);
+                doc.setLineWidth(0.1);
+                doc.line(marginX, currentY, pageWidth - marginX, currentY);
+                doc.line(marginX, currentY + boxHeight, pageWidth - marginX, currentY + boxHeight);
+                doc.line(midPage, currentY, midPage, currentY + boxHeight);
+
+                // Client Info
+                doc.setTextColor(0);
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'bold');
+                doc.text(`${client.name.substring(0, 35)}`, marginX + 2, currentY + 6);
+                
+                doc.setFontSize(9);
+                doc.setFont(undefined, 'normal');
+                doc.text(`Responsável: ${client.contactPerson || '-'}`, marginX + 2, currentY + 12);
+                
+                let periodoTxt = "Todo o histórico";
+                if(startDate && endDate) {
+                    const d1 = new Date(startDate + 'T00:00:00').toLocaleDateString();
+                    const d2 = new Date(endDate + 'T00:00:00').toLocaleDateString();
+                    periodoTxt = `${d1} a ${d2}`;
+                }
+                doc.text(`Período: ${periodoTxt}`, marginX + 2, currentY + 17);
+                doc.text(`Emissão: ${new Date().toLocaleDateString()}`, marginX + 2, currentY + 22);
+
+                // Provider Info
+                const rightX = midPage + 4;
+                const myName = currentUser.companyName || currentUser.name || "Sua Empresa";
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'bold');
+                doc.text(`${myName.substring(0, 35)}`, rightX, currentY + 6);
+                doc.setFontSize(9);
+                doc.setFont(undefined, 'normal');
+                const myCnpj = currentUser.companyCnpj || "CNPJ Não informado";
+                doc.text(`CNPJ: ${myCnpj}`, rightX, currentY + 12);
+                const myPhone = currentUser.phone || "-";
+                doc.text(`WhatsApp: ${myPhone}`, rightX, currentY + 17);
+                doc.text(`Resp.: ${currentUser.name.split(' ')[0]}`, rightX, currentY + 22);
+
+                currentY += boxHeight + 10;
+
+                // Service Details Title
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'bold');
+                doc.text(`DETALHAMENTO DE SERVIÇOS`, marginX, currentY);
+                doc.line(marginX, currentY + 1, pageWidth - marginX, currentY + 1);
+                currentY += 5;
+
+                // --- TABELA ATUALIZADA ---
+                const tableData = filteredServices.map(s => {
+                    const baseCost = s.cost;
+                    const waiting = s.waitingTime || 0;
+                    const extra = s.extraFee || 0;
+                    const lineTotal = baseCost + waiting + extra;
+                    
+                    const displayOrderId = s.manualOrderId 
+                        ? s.manualOrderId 
+                        : '';
+
+                    // Formatação profissional dos endereços
+                    const formatAddressList = (addresses: string[]) => {
+                        if (!addresses || addresses.length === 0) return '-';
+                        if (addresses.length === 1) return addresses[0];
+                        return addresses.map(a => `• ${a}`).join('\n');
+                    };
+
+                    return [
+                        new Date(s.date + 'T00:00:00').toLocaleDateString().substring(0, 5), // DD/MM
+                        s.requesterName.substring(0, 15), 
+                        formatAddressList(s.pickupAddresses),
+                        formatAddressList(s.deliveryAddresses),
+                        waiting > 0 ? `R$ ${waiting.toFixed(2)}` : '-',
+                        extra > 0 ? `R$ ${extra.toFixed(2)}` : '-',
+                        `R$ ${baseCost.toFixed(2)}`, 
+                        `R$ ${lineTotal.toFixed(2)}`, 
+                        displayOrderId
+                    ];
+                });
+
+                autoTable(doc, {
+                    startY: currentY,
+                    head: [['DATA', 'SOLICITANTE', 'ORIGEM', 'DESTINO', 'ESPERA', 'TAXA', 'SERVIÇO', 'TOTAL', 'PEDIDO']],
+                    body: tableData,
+                    theme: 'plain', 
+                    styles: {
+                        fontSize: 7, 
+                        cellPadding: 2,
+                        textColor: 0,
+                        lineColor: 200,
+                        lineWidth: 0.1,
+                        valign: 'middle',
+                        overflow: 'linebreak'
+                    },
+                    headStyles: {
+                        fillColor: [240, 240, 240], 
+                        textColor: 0,
+                        fontStyle: 'bold',
+                        lineWidth: 0.1,
+                        lineColor: 200
+                    },
+                    columnStyles: {
+                        0: { cellWidth: 12 }, 
+                        1: { cellWidth: 20 }, 
+                        2: { cellWidth: 30 },
+                        3: { cellWidth: 30 },
+                        4: { cellWidth: 15, halign: 'right' }, 
+                        5: { cellWidth: 15, halign: 'right' }, 
+                        6: { cellWidth: 18, halign: 'right' }, 
+                        7: { cellWidth: 20, halign: 'right' }, 
+                        8: { cellWidth: 20, halign: 'center' } 
+                    },
+                    margin: { left: marginX, right: marginX }
+                });
+
+                // Summary Footer
+                // @ts-ignore
+                let finalY = doc.lastAutoTable.finalY + 10;
+                if (finalY > 250) {
+                    doc.addPage();
+                    finalY = 20;
+                }
+
+                doc.setDrawColor(0);
+                doc.setLineWidth(0.1);
+                doc.line(marginX, finalY, pageWidth - marginX, finalY);
+
+                const totalValue = filteredServices.reduce((sum, s) => {
+                    return sum + s.cost + (s.waitingTime || 0) + (s.extraFee || 0);
+                }, 0);
+
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'bold');
+                const resumoX = 140; 
+                doc.text("TOTAL DE SERVIÇOS:", resumoX, finalY + 7);
+                doc.text(filteredServices.length.toString(), pageWidth - marginX, finalY + 7, { align: 'right' });
+
+                doc.text("VALOR TOTAL:", resumoX, finalY + 14);
+                doc.setFontSize(12);
+                doc.text(`R$ ${totalValue.toFixed(2)}`, pageWidth - marginX, finalY + 14, { align: 'right' });
+
+                const fileName = `Relatorio_${client.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
                 doc.save(fileName);
-            } catch (error) { alert("Erro ao gerar PDF."); } finally { setIsGeneratingPdf(false); }
+
+            } catch (error) {
+                console.error("Error generating PDF", error);
+                alert("Erro ao gerar PDF.");
+            } finally {
+                setIsGeneratingPdf(false);
+            }
         }, 100);
     };
+
     const downloadCSV = () => {
-        // ... (Lógica do CSV mantida) ...
+        setShowExportMenu(false);
+        const maxPickups = Math.max(...filteredServices.map(s => s.pickupAddresses.length), 1);
+        const maxDeliveries = Math.max(...filteredServices.map(s => s.deliveryAddresses.length), 1);
+
+        const pickupHeaders = Array.from({ length: maxPickups }, (_, i) => `Coleta ${i + 1}`);
+        const deliveryHeaders = Array.from({ length: maxDeliveries }, (_, i) => `Entrega ${i + 1}`);
+
+        const headers = ['Data', 'Pedido', 'Solicitante', ...pickupHeaders, ...deliveryHeaders, 'Valor Base (R$)', 'Espera (R$)', 'Taxa Extra (R$)', 'Total (R$)', 'Método', 'Pagamento'];
+        
+        const rows = filteredServices.map(s => {
+            const safeString = (str: string) => `"${str.replace(/"/g, '""')}"`;
+            const pickupCols = Array.from({ length: maxPickups }, (_, i) => safeString(s.pickupAddresses[i] || ''));
+            const deliveryCols = Array.from({ length: maxDeliveries }, (_, i) => safeString(s.deliveryAddresses[i] || ''));
+            
+            const total = s.cost + (s.waitingTime || 0) + (s.extraFee || 0);
+
+            return [
+                new Date(s.date + 'T00:00:00').toLocaleDateString(),
+                safeString(s.manualOrderId || ''),
+                safeString(s.requesterName),
+                ...pickupCols,
+                ...deliveryCols,
+                s.cost.toFixed(2).replace('.', ','),
+                (s.waitingTime || 0).toFixed(2).replace('.', ','),
+                (s.extraFee || 0).toFixed(2).replace('.', ','),
+                total.toFixed(2).replace('.', ','),
+                getPaymentMethodLabel(s.paymentMethod),
+                s.paid ? 'PAGO' : 'PENDENTE'
+            ].join(';');
+        });
+
+        const csvContent = "\uFEFF" + [headers.join(';'), ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `Relatorio_${client.name.replace(/\s+/g, '_')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
+
     const exportExcel = (type: 'client' | 'internal') => {
-        // ... (Lógica do Excel mantida) ...
+        setShowExportMenu(false);
+        alert("Use o PDF para o relatório oficial com taxas extras.");
     };
 
     const isAllSelected = filteredServices.length > 0 && selectedIds.size === filteredServices.length;
@@ -689,7 +889,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     return (
         <div ref={topRef} className="space-y-6 animate-fade-in relative">
 
-            {/* MODAL DE EXCLUSÃO */}
+            {/* --- MODAL DE EXCLUSÃO DE SERVIÇO --- */}
             {serviceToDelete && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
                     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-700 animate-slide-up">
@@ -699,8 +899,8 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                             </div>
                             <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Excluir Serviço?</h3>
                             <p className="text-slate-600 dark:text-slate-400 mb-6">
-                                Tem certeza que deseja remover este serviço?
-                                <br />Esta ação não poderá ser desfeita.
+                                Tem certeza que deseja mover este serviço para a lixeira?
+                                <br />Você poderá restaurá-lo depois se necessário.
                             </p>
 
                             <div className="flex gap-3 justify-center">
@@ -774,7 +974,41 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                     {client.category}
                                 </span>
                             </h1>
-                            {/* Detalhes do cliente ... */}
+                            {client.cnpj && (
+                                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1 flex items-center gap-2">
+                                    <Building size={14} />
+                                    CNPJ: {client.cnpj}
+                                </p>
+                            )}
+
+                            <div className="flex flex-col gap-2 mt-4 text-slate-600 dark:text-slate-300 text-sm font-medium">
+                                <div className="flex flex-wrap gap-4 md:gap-6">
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                        {client.email}
+                                    </span>
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                        {client.phone}
+                                    </span>
+                                </div>
+                                {(client.address || client.contactPerson) && (
+                                    <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-700 flex flex-col gap-2">
+                                        {client.contactPerson && (
+                                            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                                                <UserIcon size={14} className="text-blue-500" />
+                                                <span className="font-bold">Responsável:</span> {client.contactPerson}
+                                            </div>
+                                        )}
+                                        {client.address && (
+                                            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                                                <MapPin size={14} className="text-emerald-500" />
+                                                <span className="font-bold">Endereço:</span> {client.address}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -826,7 +1060,6 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
 
                     {showForm && (
                         <form onSubmit={(e) => { e.preventDefault(); handleSaveService(e); }} className="bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-700 space-y-6 animate-slide-down">
-                            {/* ... (SEU FORMULÁRIO COMPLETO AQUI - MANTIDO IGUAL) ... */}
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-700 pb-4 gap-4">
                                 <h3 className="font-bold text-white text-lg">{editingServiceId ? 'Editar Corrida' : 'Registrar Nova Corrida'}</h3>
                                 
@@ -966,53 +1199,266 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
             {/* Filter Bar (Shared) */}
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 overflow-hidden">
                 <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-slate-50 dark:bg-slate-800/50">
-                    {/* ... Filtros e Botões de Ação em Massa ... */}
-                    {/* (Simplificado aqui para não estourar limite, mas mantenha o que estava no seu código original) */}
-                    <div className="flex gap-1 w-full sm:w-auto">
-                        {/* Seus filtros de data e status vão aqui */}
-                        <div className="flex gap-1">
-                            <button onClick={() => setDateRange('today')} className="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg text-xs font-bold">Hoje</button>
-                            <button onClick={() => setDateRange('week')} className="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg text-xs font-bold">Semana</button>
-                            <button onClick={() => setDateRange('month')} className="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg text-xs font-bold">Mês</button>
+                    <h3 className="font-bold text-slate-800 dark:text-white whitespace-nowrap hidden sm:block">
+                        {activeTab === 'services' ? 'Histórico de Corridas' : 'Detalhes Financeiros'}
+                    </h3>
+
+                    {selectedIds.size > 0 ? (
+                        <div className="flex items-center gap-3 w-full lg:w-auto animate-fade-in bg-blue-50 dark:bg-blue-900/20 p-2 rounded-lg border border-blue-200 dark:border-blue-800/50">
+                            <span className="text-sm font-bold text-blue-700 dark:text-blue-400 whitespace-nowrap px-2">{selectedIds.size} selecionado(s)</span>
+                            <div className="h-6 w-px bg-blue-200 dark:bg-blue-800/50"></div>
+                            <button
+                                onClick={() => handleBulkStatusChange(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-md transition-colors shadow-sm"
+                            >
+                                <CheckCircle size={14} />
+                                Marcar PAGO
+                            </button>
+                            <button
+                                onClick={() => handleBulkStatusChange(false)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-md transition-colors shadow-sm"
+                            >
+                                <AlertCircle size={14} />
+                                Marcar PENDENTE
+                            </button>
+                            <button onClick={() => setSelectedIds(new Set())} className="p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-md text-blue-600 dark:text-blue-400">
+                                <X size={16} />
+                            </button>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="flex flex-col sm:flex-row w-full lg:w-auto gap-3 items-center text-sm flex-wrap">
+                            {/* Status Filter Buttons */}
+                            <div className="flex bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg overflow-hidden p-1 gap-1 w-full sm:w-auto">
+                                <button
+                                    onClick={() => setStatusFilter('ALL')}
+                                    className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-bold transition-all ${statusFilter === 'ALL' ? 'bg-slate-100 dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-600'}`}
+                                >
+                                    Todos
+                                </button>
+                                <button
+                                    onClick={() => setStatusFilter('PAID')}
+                                    className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-bold transition-all ${statusFilter === 'PAID' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-600'}`}
+                                >
+                                    Pagos
+                                </button>
+                                <button
+                                    onClick={() => setStatusFilter('PENDING')}
+                                    className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-bold transition-all ${statusFilter === 'PENDING' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-600'}`}
+                                >
+                                    Pendentes
+                                </button>
+                            </div>
+
+                            {/* Date Filter */}
+                            <div className="flex gap-1 w-full sm:w-auto">
+                                <button onClick={() => setDateRange('today')} className="flex-1 sm:flex-none px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors">Hoje</button>
+                                <button onClick={() => setDateRange('week')} className="flex-1 sm:flex-none px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors">Semana</button>
+                                <button onClick={() => setDateRange('month')} className="flex-1 sm:flex-none px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors">Mês</button>
+                            </div>
+                            <div className="flex items-center gap-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 w-full sm:w-auto">
+                                <Filter size={14} className="text-slate-500 dark:text-slate-400 shrink-0" />
+                                <input
+                                    type="date"
+                                    className="outline-none text-slate-700 dark:text-slate-200 font-medium bg-white dark:bg-slate-700 w-full sm:w-auto text-xs sm:text-sm"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                />
+                                <span className="text-slate-400 font-bold">-</span>
+                                <input
+                                    type="date"
+                                    className="outline-none text-slate-700 dark:text-slate-200 font-medium bg-white dark:bg-slate-700 w-full sm:w-auto text-xs sm:text-sm"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                />
+                            </div>
+
+                            {/* Quick PDF Button */}
+                            <button
+                                onClick={() => handleExportBoleto()}
+                                disabled={isGeneratingPdf}
+                                className="w-full sm:w-auto text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-lg font-bold transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                                title="Baixar Fatura PDF"
+                            >
+                                {isGeneratingPdf ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
+                                PDF
+                            </button>
+
+                            {/* Export Button (Available in both tabs) */}
+                            <div className="relative w-full sm:w-auto">
+                                <button
+                                    onClick={() => setShowExportMenu(!showExportMenu)}
+                                    className="w-full sm:w-auto text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 px-3 py-1.5 rounded-lg font-bold transition-colors flex items-center justify-center gap-1 border border-emerald-300 dark:border-emerald-700 whitespace-nowrap"
+                                >
+                                    <FileSpreadsheet size={16} />
+                                    Exportar
+                                    <ChevronDown size={14} className={`transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+                                </button>
+                                {showExportMenu && (
+                                    <>
+                                        <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)}></div>
+                                        <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-20 overflow-hidden animate-fade-in">
+                                            <button
+                                                onClick={() => handleExportBoleto()}
+                                                disabled={isGeneratingPdf}
+                                                className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex items-center gap-3 border-b border-slate-100 dark:border-slate-700"
+                                            >
+                                                <div className="p-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg">
+                                                    {isGeneratingPdf ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-slate-800 dark:text-white">Baixar Fatura PDF</p>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400">Modelo Boleto (Completão)</p>
+                                                </div>
+                                            </button>
+                                            <button
+                                                onClick={downloadCSV}
+                                                className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex items-center gap-3 border-b border-slate-100 dark:border-slate-700"
+                                            >
+                                                <div className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-lg">
+                                                    <Table size={16} />
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-slate-800 dark:text-white">Baixar Planilha CSV</p>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400">Compatível com Excel e Google Sheets</p>
+                                                </div>
+                                            </button>
+                                            <button
+                                                onClick={() => exportExcel('client')}
+                                                className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex items-center gap-3 border-b border-slate-100 dark:border-slate-700"
+                                            >
+                                                <div className="p-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+                                                    <FileText size={16} />
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-slate-800 dark:text-white">Para o Cliente (.xls)</p>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Sem custos internos</p>
+                                                </div>
+                                            </button>
+                                            <button
+                                                onClick={() => exportExcel('internal')}
+                                                className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex items-center gap-3 border-b border-slate-100 dark:border-slate-700"
+                                            >
+                                                <div className="p-1.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                                                    <ShieldCheck size={16} />
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-slate-800 dark:text-white">Interno (.xls)</p>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Completa com lucros</p>
+                                                </div>
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                {/* TAB 2: FINANCIAL DASHBOARD CONTENT */}
+                {/* TAB 2: FINANCIAL DASHBOARD CONTENT (Only visible in 'financial' tab) */}
                 {activeTab === 'financial' && (
                     <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 space-y-6">
-                        {/* ... Stats Financeiros ... */}
+                        {/* Main Stats */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 border-l-4 border-l-emerald-500">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase">Valor Recebido (Pago)</p>
+                                        <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">R$ {stats.totalPaid.toFixed(2)}</p>
+                                    </div>
+                                    <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-full">
+                                        <CheckCircle size={24} />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 border-l-4 border-l-amber-500">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase">Valor a Receber (Pendente)</p>
+                                        <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">R$ {stats.totalPending.toFixed(2)}</p>
+                                    </div>
+                                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-full">
+                                        <AlertCircle size={24} />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Payment Method Breakdown */}
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700">
+                            <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase mb-4">Entradas por Método</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-100 dark:border-emerald-800/50">
+                                    <div className="flex items-center gap-2">
+                                        <Banknote size={18} className="text-emerald-600 dark:text-emerald-400" />
+                                        <span className="text-slate-700 dark:text-slate-300 font-bold">Dinheiro</span>
+                                    </div>
+                                    <span className="font-bold text-emerald-700 dark:text-emerald-400">R$ {stats.revenueByMethod['CASH'].toFixed(2)}</span>
+                                </div>
+                                <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800/50">
+                                    <div className="flex items-center gap-2">
+                                        <QrCode size={18} className="text-blue-600 dark:text-blue-400" />
+                                        <span className="text-slate-700 dark:text-slate-300 font-bold">Pix</span>
+                                    </div>
+                                    <span className="font-bold text-blue-700 dark:text-blue-400">R$ {stats.revenueByMethod['PIX'].toFixed(2)}</span>
+                                </div>
+                                <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-100 dark:border-purple-800/50">
+                                    <div className="flex items-center gap-2">
+                                        <CreditCard size={18} className="text-purple-600 dark:text-purple-400" />
+                                        <span className="text-slate-700 dark:text-slate-300 font-bold">Cartão</span>
+                                    </div>
+                                    <span className="font-bold text-purple-700 dark:text-purple-400">R$ {stats.revenueByMethod['CARD'].toFixed(2)}</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 )}
 
-                {/* DATA TABLE (COM O RELOGINHO ADICIONADO) */}
+                {/* DATA TABLE (Shared but with different columns based on tab) */}
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
                             <tr>
+                                {/* Checkbox Header */}
                                 <th className="p-4 w-12">
-                                    <button onClick={toggleSelectAll} className="text-slate-400 hover:text-blue-600">
-                                        {isAllSelected ? <CheckSquare size={20} className="text-blue-600" /> : <Square size={20} />}
+                                    <button
+                                        onClick={toggleSelectAll}
+                                        className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                        disabled={filteredServices.length === 0}
+                                    >
+                                        {isAllSelected ? <CheckSquare size={20} className="text-blue-600 dark:text-blue-400" /> :
+                                            isSomeSelected ? <MinusSquare size={20} className="text-blue-600 dark:text-blue-400" /> :
+                                                <Square size={20} />}
                                     </button>
                                 </th>
                                 <th className="p-4 font-bold text-slate-800 dark:text-white">Data</th>
                                 <th className="p-4 font-bold text-slate-800 dark:text-white">Rota</th>
                                 <th className="p-4 font-bold text-slate-800 dark:text-white">Solicitante</th>
                                 <th className="p-4 font-bold text-slate-800 dark:text-white text-right">Cobrado (Int)</th>
+
+                                {/* Conditional Columns */}
                                 {activeTab === 'services' && (
                                     <>
                                         <th className="p-4 font-bold text-slate-800 dark:text-white text-right">Motoboy</th>
                                         <th className="p-4 font-bold text-slate-800 dark:text-white text-right">Lucro</th>
                                     </>
                                 )}
+
+                                {/* Financial Tab Columns */}
                                 <th className="p-4 font-bold text-slate-800 dark:text-white text-center">Método</th>
                                 <th className="p-4 font-bold text-slate-800 dark:text-white text-center">Pagamento</th>
+
                                 <th className="p-4 text-center w-24 font-bold text-slate-800 dark:text-white">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             {filteredServices.length === 0 ? (
-                                <tr><td colSpan={11} className="p-8 text-center text-slate-500">Nada encontrado.</td></tr>
+                                <tr>
+                                    <td colSpan={11} className="p-8 text-center text-slate-500 dark:text-slate-400 font-medium">
+                                        {showTrash 
+                                            ? 'A lixeira está vazia.' 
+                                            : (startDate ? 'Nenhuma corrida encontrada no período selecionado.' : 'Nenhuma corrida registrada.')}
+                                    </td>
+                                </tr>
                             ) : (
                                 filteredServices.map(service => {
                                     const internalTotal = service.cost + (service.waitingTime || 0);
@@ -1022,15 +1468,15 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                     return (
                                         <tr
                                             key={service.id}
-                                            className={`hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group ${isSelected ? 'bg-blue-50/70 dark:bg-blue-900/10' : ''} ${showTrash ? 'opacity-75' : ''}`}
+                                            className={`hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group ${isSelected ? 'bg-blue-50/70 dark:bg-blue-900/10' : ''} cursor-pointer ${showTrash ? 'opacity-75' : ''}`}
                                             onClick={(e) => {
                                                 if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('input')) return;
                                                 setViewingService(service);
                                             }}
                                         >
                                             <td className="p-4 align-top">
-                                                <button onClick={(e) => { e.stopPropagation(); toggleSelectRow(service.id); }} className="text-slate-400 hover:text-blue-600">
-                                                    {isSelected ? <CheckSquare size={20} className="text-blue-600" /> : <Square size={20} />}
+                                                <button onClick={(e) => { e.stopPropagation(); toggleSelectRow(service.id); }} className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400">
+                                                    {isSelected ? <CheckSquare size={20} className="text-blue-600 dark:text-blue-400" /> : <Square size={20} />}
                                                 </button>
                                             </td>
                                             <td className="p-4 text-slate-700 dark:text-slate-300 whitespace-nowrap align-top font-medium">
@@ -1040,7 +1486,9 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                                         {new Date(service.date + 'T00:00:00').toLocaleDateString()}
                                                     </div>
                                                     {service.manualOrderId && (
-                                                        <span className="text-[10px] text-blue-500 font-bold mt-1 uppercase">#{service.manualOrderId}</span>
+                                                        <span className="text-[10px] text-blue-500 font-bold mt-1 uppercase">
+                                                            #{service.manualOrderId}
+                                                        </span>
                                                     )}
                                                 </div>
                                             </td>
@@ -1064,9 +1512,12 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                                 {service.requesterName}
                                             </td>
                                             
+                                            {/* VALOR INTERNO (BASE + ESPERA) */}
                                             <td className="p-4 text-right font-bold text-emerald-700 dark:text-emerald-400 align-top">
                                                 R$ {internalTotal.toFixed(2)}
-                                                {service.extraFee && service.extraFee > 0 && <span className="block text-[10px] text-slate-400">+ Taxa PDF</span>}
+                                                {service.extraFee && service.extraFee > 0 && (
+                                                    <span className="block text-[10px] text-slate-400">+ Taxa PDF</span>
+                                                )}
                                             </td>
 
                                             {activeTab === 'services' && (
@@ -1080,6 +1531,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                                 </>
                                             )}
 
+                                            {/* Payment Method Column */}
                                             <td className="p-4 align-top text-center">
                                                 <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300">
                                                     {getPaymentIcon(service.paymentMethod)}
@@ -1087,15 +1539,27 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                                 </div>
                                             </td>
 
+                                            {/* Payment Status Column - Interactive */}
                                             <td className="p-4 align-top text-center">
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleTogglePayment(service); }}
                                                     className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all shadow-sm ${service.paid
-                                                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'
-                                                        : 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50'
+                                                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800/50'
+                                                        : 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-800/50'
                                                         }`}
+                                                    title={service.paid ? "Marcar como Pendente" : "Marcar como Pago"}
                                                 >
-                                                    {service.paid ? 'PAGO' : 'PENDENTE'}
+                                                    {service.paid ? (
+                                                        <>
+                                                            <CheckCircle size={14} />
+                                                            PAGO
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <AlertCircle size={14} />
+                                                            PENDENTE
+                                                        </>
+                                                    )}
                                                 </button>
                                             </td>
 
@@ -1108,6 +1572,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                                             title="Restaurar Serviço"
                                                         >
                                                             <RotateCcw size={18} />
+                                                            Restaurar
                                                         </button>
                                                     ) : (
                                                         <>
