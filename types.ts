@@ -25,6 +25,7 @@ export interface Client {
   address?: string;
   contactPerson?: string;
   cnpj?: string;
+  deletedAt?: string;
 }
 
 export type PaymentMethod = 'PIX' | 'CASH' | 'CARD';
@@ -36,7 +37,7 @@ export interface ServiceRecord {
   clientId: string;
   pickupAddresses: string[]; 
   deliveryAddresses: string[]; 
-  cost: number;        // Valor Base
+  cost: number;
   driverFee: number; 
   requesterName: string;
   date: string;
@@ -45,13 +46,20 @@ export interface ServiceRecord {
   paid: boolean; 
   paymentMethod?: PaymentMethod;
   status: ServiceStatus;
-  
-  // --- CAMPO DO PEDIDO MANUAL ---
   manualOrderId?: string; 
-  
-  // --- NOVOS CAMPOS EM REAIS (R$) ---
-  waitingTime?: number; // Valor da Espera (Soma no interno e no cliente)
-  extraFee?: number;    // Taxa Extra (Soma APENAS no PDF do cliente)
+  waitingTime?: number;
+  extraFee?: number;
+  deletedAt?: string;
+}
+
+// --- NOVO: Interface do Log de Auditoria ---
+export interface ServiceLog {
+  id: string;
+  serviceId: string;
+  userName: string;
+  action: 'CRIACAO' | 'EDICAO' | 'EXCLUSAO' | 'RESTAURACAO';
+  changes: Record<string, { old: any, new: any }>;
+  createdAt: string;
 }
 
 export type ExpenseCategory = 'GAS' | 'LUNCH' | 'OTHER';
