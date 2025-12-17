@@ -25,7 +25,7 @@ export interface Client {
   address?: string;
   contactPerson?: string;
   cnpj?: string;
-  deletedAt?: string; // NOVO CAMPO
+  deletedAt?: string; // Soft Delete
 }
 
 export type PaymentMethod = 'PIX' | 'CASH' | 'CARD';
@@ -49,7 +49,17 @@ export interface ServiceRecord {
   manualOrderId?: string; 
   waitingTime?: number;
   extraFee?: number;
-  deletedAt?: string; // NOVO CAMPO
+  deletedAt?: string; // Soft Delete
+}
+
+// --- NOVO: Interface para o Log de Auditoria ---
+export interface ServiceLog {
+  id: string;
+  serviceId: string;
+  userName: string;
+  action: 'CRIACAO' | 'EDICAO' | 'EXCLUSAO' | 'RESTAURACAO';
+  changes: Record<string, { old: any, new: any }>; // Armazena o "De -> Para"
+  createdAt: string;
 }
 
 export type ExpenseCategory = 'GAS' | 'LUNCH' | 'OTHER';
