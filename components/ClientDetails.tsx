@@ -120,7 +120,7 @@ const ServiceHistoryModal = ({ service, onClose }: { service: ServiceRecord; onC
     );
 };
 
-// --- MODAL DE DOCUMENTO PDF ---
+// --- MODAL DE DOCUMENTO ---
 export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: { service: ServiceRecord; client: Client; currentUser: User; onClose: () => void }) => {
     const invoiceRef = useRef<HTMLDivElement>(null);
     const [isSharing, setIsSharing] = useState(false);
@@ -325,7 +325,6 @@ export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: 
 
 
 export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUser, onBack }) => {
-    // Referência para o TOPO da página (para onde vamos rolar ao editar)
     const topRef = useRef<HTMLDivElement>(null);
 
     const [services, setServices] = useState<ServiceRecord[]>([]);
@@ -423,7 +422,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         setShowForm(true);
         setActiveTab('services'); 
 
-        // --- ROLAGEM AUTOMÁTICA PARA O TOPO ---
+        // --- ROLAGEM AUTOMÁTICA PARA O TOPO (MANTIDO) ---
         setTimeout(() => {
             if (topRef.current) {
                 topRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -443,7 +442,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 date: getLocalDateStr(new Date()), // Data de Hoje
                 paid: false, // Reinicia pagamento
                 status: 'PENDING', // Reinicia Status
-                manualOrderId: '', // Limpa o ID manual
+                manualOrderId: '', // Limpa o ID manual para não dar conflito (usuário pode editar depois)
             };
     
             await saveService(newService);
@@ -934,6 +933,14 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                 />
             )}
 
+            {/* --- ADIÇÃO: MODAL DE HISTÓRICO --- */}
+            {viewingHistoryService && (
+                <ServiceHistoryModal 
+                    service={viewingHistoryService} 
+                    onClose={() => setViewingHistoryService(null)} 
+                />
+            )}
+
             {/* Header Area */}
             <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
@@ -1085,17 +1092,18 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                     {pickupAddresses.map((addr, idx) => (
                                         <div key={idx} className="flex gap-2 relative">
                                             <MapPin size={16} className="absolute left-3 top-3 text-blue-500" />
-                                            <input className="w-full pl-9 p-2.5 border border-slate-700 rounded-lg bg-slate-800 text-white text-sm focus:border-blue-500 outline-none" value={addr} onChange={e => handleAddressChange('pickup', idx, e.target.value)} placeholder="Endereço de retirada" />
+                                            <input className="w-full pl-9 pr-32 p-2.5 border border-slate-700 rounded-lg bg-slate-800 text-white text-sm focus:border-blue-500 outline-none" value={addr} onChange={e => handleAddressChange('pickup', idx, e.target.value)} placeholder="Endereço de retirada" />
                                             
-                                            {/* --- BOTÃO COLAR ENDEREÇO CLIENTE (COLETA) --- */}
+                                            {/* BOTÃO COLAR ENDEREÇO CLIENTE */}
                                             {client.address && (
                                                 <button
                                                     type="button"
                                                     onClick={() => handleAddressChange('pickup', idx, client.address || '')}
-                                                    title="Usar endereço do cliente"
-                                                    className="absolute right-8 top-2.5 text-slate-400 hover:text-blue-500 transition-colors"
+                                                    className="absolute right-8 top-1.5 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs rounded-md flex items-center gap-1 transition-colors border border-blue-200 shadow-sm"
+                                                    title="Copiar endereço do cadastro"
                                                 >
-                                                    <Building size={16} />
+                                                    <Building size={12} />
+                                                    Copiar do Cadastro
                                                 </button>
                                             )}
 
@@ -1109,17 +1117,18 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                     {deliveryAddresses.map((addr, idx) => (
                                         <div key={idx} className="flex gap-2 relative">
                                             <MapPin size={16} className="absolute left-3 top-3 text-emerald-500" />
-                                            <input className="w-full pl-9 p-2.5 border border-slate-700 rounded-lg bg-slate-800 text-white text-sm focus:border-emerald-500 outline-none" value={addr} onChange={e => handleAddressChange('delivery', idx, e.target.value)} placeholder="Endereço de destino" />
+                                            <input className="w-full pl-9 pr-32 p-2.5 border border-slate-700 rounded-lg bg-slate-800 text-white text-sm focus:border-emerald-500 outline-none" value={addr} onChange={e => handleAddressChange('delivery', idx, e.target.value)} placeholder="Endereço de destino" />
                                             
-                                            {/* --- BOTÃO COLAR ENDEREÇO CLIENTE (ENTREGA) --- */}
+                                            {/* BOTÃO COLAR ENDEREÇO CLIENTE */}
                                             {client.address && (
                                                 <button
                                                     type="button"
                                                     onClick={() => handleAddressChange('delivery', idx, client.address || '')}
-                                                    title="Usar endereço do cliente"
-                                                    className="absolute right-8 top-2.5 text-slate-400 hover:text-emerald-500 transition-colors"
+                                                    className="absolute right-8 top-1.5 px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 text-xs rounded-md flex items-center gap-1 transition-colors border border-emerald-200 shadow-sm"
+                                                    title="Copiar endereço do cadastro"
                                                 >
-                                                    <Building size={16} />
+                                                    <Building size={12} />
+                                                    Copiar do Cadastro
                                                 </button>
                                             )}
 
@@ -1594,7 +1603,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                                         </button>
                                                     ) : (
                                                         <>
-                                                            {/* --- BOTÃO DE HISTÓRICO AQUI --- */}
+                                                            {/* --- BOTÃO DE HISTÓRICO ADICIONADO AQUI --- */}
                                                             {currentUser.role === 'ADMIN' && (
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); setViewingHistoryService(service); }}
