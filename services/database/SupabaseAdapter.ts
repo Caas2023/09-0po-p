@@ -1,6 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { DatabaseAdapter } from './types';
-import { Client, ServiceRecord, ExpenseRecord, User } from '../../types';
+import { Client, ServiceRecord, ExpenseRecord, User, ServiceLog } from '../../types';
 
 export class SupabaseAdapter implements DatabaseAdapter {
     private supabase: SupabaseClient;
@@ -16,29 +16,20 @@ export class SupabaseAdapter implements DatabaseAdapter {
     // --- Users ---
     async getUsers(): Promise<User[]> {
         const { data, error } = await this.supabase.from('users').select('*');
-        if (error) {
-            console.error('Supabase error:', error);
-            return [];
-        }
+        if (error) return [];
         return data as User[];
     }
 
     async saveUser(user: User): Promise<void> {
-        const { error } = await this.supabase.from('users').upsert(user);
-        if (error) console.error('Supabase insert/update error (user):', error);
+        await this.supabase.from('users').upsert(user);
     }
 
     async updateUser(user: User): Promise<void> {
-        const { error } = await this.supabase.from('users').update(user).eq('id', user.id);
-        if (error) console.error('Supabase update error (user):', error);
+        await this.supabase.from('users').update(user).eq('id', user.id);
     }
 
     async deleteUser(id: string): Promise<void> {
-        const { error } = await this.supabase.from('users').delete().eq('id', id);
-        if (error) {
-            console.error('Supabase delete user error:', error);
-            throw new Error('Falha ao excluir usuário');
-        }
+        await this.supabase.from('users').delete().eq('id', id);
     }
 
     // --- Clients ---
@@ -67,27 +58,35 @@ export class SupabaseAdapter implements DatabaseAdapter {
             contact_person: client.contactPerson,
             cnpj: client.cnpj,
             created_at: client.createdAt,
-            // CORREÇÃO: Usa '|| null' para garantir que limpe o campo se for undefined
             deleted_at: client.deletedAt || null 
         };
-        
-        const { error } = await this.supabase.from('clients').upsert(payload);
-        
-        if (error) console.error('Supabase upsert error (client):', error);
+        await this.supabase.from('clients').upsert(payload);
     }
 
     async deleteClient(id: string): Promise<void> {
-        // Exclusão física (apenas se necessário, o app usa soft delete via saveClient)
-        const { error } = await this.supabase.from('clients').delete().eq('id', id);
-        if (error) {
-            console.error('Supabase delete error:', error);
-            throw new Error('Falha ao excluir cliente no Supabase');
-        }
+        await this.supabase.from('clients').delete().eq('id', id);
+    }
+
+    // --- LOGS HELPER ---
+    private async logAction(serviceId: string, action: string, changes: any, user?: User) {
+        if (!user) return; // Se não tiver usuário, não loga (ou loga como Sistema)
+        
+        await this.supabase.from('service_logs').insert({
+            service_id: serviceId,
+            user_name: user.name || user.email,
+            action: action,
+            changes: changes,
+            created_at: new Date().toISOString()
+        });
     }
 
     // --- Services ---
-    async getServices(ownerId: string): Promise<ServiceRecord[]> {
-        const { data, error } = await this.supabase.from('services').select('*').eq('owner_id', ownerId);
+    async getServices(ownerId: string, start?: string, end?: string, clientId?: string): Promise<ServiceRecord[]> {
+        let query = this.supabase.from('services').select('*').eq('owner_id', ownerId);
+        if (start && end) query = query.gte('date', start).lte('date', end);
+        if (clientId) query = query.eq('client_id', clientId);
+
+        const { data, error } = await query;
         if (error) return [];
         return data.map((d: any) => ({
             ...d,
@@ -107,7 +106,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
         })) as ServiceRecord[];
     }
 
-    async saveService(service: ServiceRecord): Promise<void> {
+    async saveService(service: ServiceRecord, user?: User): Promise<void> {
         const payload = {
             id: service.id,
             owner_id: service.ownerId,
@@ -124,14 +123,27 @@ export class SupabaseAdapter implements DatabaseAdapter {
             waiting_time: service.waitingTime,
             extra_fee: service.extraFee,
             manual_order_id: service.manualOrderId,
-            // CORREÇÃO: Usa '|| null' para garantir que limpe o campo se for undefined
             deleted_at: service.deletedAt || null
         };
+
+        // Verifica se é criação ou atualização para log
+        const { data: existing } = await this.supabase.from('services').select('id').eq('id', service.id).single();
+        
         const { error } = await this.supabase.from('services').upsert(payload);
-        if (error) console.error('Supabase insert error (service):', error);
+        
+        if (!error && user) {
+            if (!existing) {
+                await this.logAction(service.id, 'CRIACAO', { info: 'Serviço criado' }, user);
+            }
+            // Se já existisse e caiu aqui, foi tratado pelo updateService geralmente, 
+            // mas como o saveService pode ser usado para ambos, focamos 'CRIACAO' aqui se não existir ID.
+        }
     }
 
-    async updateService(service: ServiceRecord): Promise<void> {
+    async updateService(service: ServiceRecord, user?: User): Promise<void> {
+        // 1. Buscar a versão antiga para comparar
+        const { data: oldDataRaw } = await this.supabase.from('services').select('*').eq('id', service.id).single();
+        
         const payload = {
             cost: service.cost,
             status: service.status,
@@ -145,29 +157,91 @@ export class SupabaseAdapter implements DatabaseAdapter {
             waiting_time: service.waitingTime,
             extra_fee: service.extraFee,
             manual_order_id: service.manualOrderId,
-            // CORREÇÃO: Usa '|| null' para garantir que limpe o campo se for undefined
             deleted_at: service.deletedAt || null
         };
-        const { error } = await this.supabase.from('services').update(payload).eq('id', service.id);
-        if (error) console.error('Supabase update error (service):', error);
-    }
 
-    async deleteService(id: string): Promise<void> {
-        const { error } = await this.supabase.from('services').delete().eq('id', id);
-        if (error) {
-            console.error('Supabase delete error (service):', error);
-            throw new Error('Falha ao excluir serviço no Supabase');
+        const { error } = await this.supabase.from('services').update(payload).eq('id', service.id);
+
+        // 2. Gerar Log de Diferenças (Diff)
+        if (!error && user && oldDataRaw) {
+            const oldService: ServiceRecord = {
+                id: oldDataRaw.id,
+                ownerId: oldDataRaw.owner_id,
+                clientId: oldDataRaw.client_id,
+                cost: oldDataRaw.cost,
+                status: oldDataRaw.status,
+                date: oldDataRaw.date,
+                pickupAddresses: oldDataRaw.pickup_addresses,
+                deliveryAddresses: oldDataRaw.delivery_addresses,
+                driverFee: oldDataRaw.driver_fee,
+                requesterName: oldDataRaw.requester_name,
+                paid: oldDataRaw.paid,
+                paymentMethod: oldDataRaw.payment_method,
+                waitingTime: oldDataRaw.waiting_time,
+                extraFee: oldDataRaw.extra_fee,
+                manualOrderId: oldDataRaw.manual_order_id,
+                deletedAt: oldDataRaw.deleted_at
+            };
+
+            const changes: Record<string, { old: any, new: any }> = {};
+            
+            // Comparar campos importantes
+            if (oldService.cost !== service.cost) changes['Valor'] = { old: oldService.cost, new: service.cost };
+            if (oldService.driverFee !== service.driverFee) changes['Pago Motoboy'] = { old: oldService.driverFee, new: service.driverFee };
+            if (oldService.requesterName !== service.requesterName) changes['Solicitante'] = { old: oldService.requesterName, new: service.requesterName };
+            if (oldService.paid !== service.paid) changes['Status Pagto'] = { old: oldService.paid ? 'Pago' : 'Pendente', new: service.paid ? 'Pago' : 'Pendente' };
+            if (JSON.stringify(oldService.pickupAddresses) !== JSON.stringify(service.pickupAddresses)) changes['Endereços Retirada'] = { old: 'Alterado', new: 'Alterado' };
+            if (JSON.stringify(oldService.deliveryAddresses) !== JSON.stringify(service.deliveryAddresses)) changes['Endereços Entrega'] = { old: 'Alterado', new: 'Alterado' };
+            
+            // Se houve mudança no deletedAt (Lixeira)
+            if (!oldService.deletedAt && service.deletedAt) {
+                await this.logAction(service.id, 'EXCLUSAO', { info: 'Movido para lixeira' }, user);
+                return;
+            }
+            if (oldService.deletedAt && !service.deletedAt) {
+                await this.logAction(service.id, 'RESTAURACAO', { info: 'Restaurado da lixeira' }, user);
+                return;
+            }
+
+            // Se houve mudanças normais
+            if (Object.keys(changes).length > 0) {
+                await this.logAction(service.id, 'EDICAO', changes, user);
+            }
         }
     }
 
-    // --- Expenses ---
-    async getExpenses(ownerId: string): Promise<ExpenseRecord[]> {
-        const { data, error } = await this.supabase.from('expenses').select('*').eq('owner_id', ownerId);
+    async deleteService(id: string, user?: User): Promise<void> {
+        // Soft delete é tratado no updateService via deletedAt. 
+        // Esse aqui é o Hard Delete (apagar pra sempre), se usado.
+        await this.supabase.from('services').delete().eq('id', id);
+    }
+
+    // --- LOGS FETCH ---
+    async getServiceLogs(serviceId: string): Promise<ServiceLog[]> {
+        const { data, error } = await this.supabase
+            .from('service_logs')
+            .select('*')
+            .eq('service_id', serviceId)
+            .order('created_at', { ascending: false });
+
         if (error) return [];
-        return data.map((d: any) => ({
-            ...d,
-            ownerId: d.owner_id
-        })) as ExpenseRecord[];
+        
+        return data.map((l: any) => ({
+            id: l.id,
+            serviceId: l.service_id,
+            userName: l.user_name,
+            action: l.action,
+            changes: l.changes,
+            createdAt: l.created_at
+        })) as ServiceLog[];
+    }
+
+    // --- Expenses ---
+    async getExpenses(ownerId: string, start?: string, end?: string): Promise<ExpenseRecord[]> {
+        let query = this.supabase.from('expenses').select('*').eq('owner_id', ownerId);
+        if (start && end) query = query.gte('date', start).lte('date', end);
+        const { data } = await query;
+        return (data || []).map((d: any) => ({ ...d, ownerId: d.owner_id })) as ExpenseRecord[];
     }
 
     async saveExpense(expense: ExpenseRecord): Promise<void> {
@@ -179,12 +253,10 @@ export class SupabaseAdapter implements DatabaseAdapter {
             date: expense.date,
             description: expense.description
         };
-        const { error } = await this.supabase.from('expenses').upsert(payload);
-        if (error) console.error('Supabase insert error (expense):', error);
+        await this.supabase.from('expenses').upsert(payload);
     }
 
     async deleteExpense(id: string): Promise<void> {
-        const { error } = await this.supabase.from('expenses').delete().eq('id', id);
-        if (error) throw new Error('Falha ao excluir despesa');
+        await this.supabase.from('expenses').delete().eq('id', id);
     }
 }
