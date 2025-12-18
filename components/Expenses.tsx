@@ -1,14 +1,30 @@
-
 import React, { useState, useEffect } from 'react';
 import { Trash2, Fuel, Utensils, Wallet, PlusCircle, Calendar } from 'lucide-react';
 import { ExpenseRecord, ExpenseCategory } from '../types';
 import { getExpenses, saveExpense, deleteExpense } from '../services/storageService';
 
+// --- CORREÇÃO DE DATA ---
+// Função auxiliar para formatar a data visualmente sem conversão de fuso horário
+const formatDateDisplay = (dateString: string) => {
+    if (!dateString) return '-';
+    // Pega apenas a parte da data (YYYY-MM-DD) e ignora qualquer hora/fuso
+    const cleanDate = dateString.split('T')[0]; 
+    const [year, month, day] = cleanDate.split('-');
+    return `${day}/${month}/${year}`;
+};
+
 export const Expenses: React.FC = () => {
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState<ExpenseCategory>('GAS');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Inicializa com a data local correta (YYYY-MM-DD)
+  const [date, setDate] = useState(() => {
+      const d = new Date();
+      const offset = d.getTimezoneOffset() * 60000;
+      return new Date(d.getTime() - offset).toISOString().split('T')[0];
+  });
+  
   const [description, setDescription] = useState('');
 
   useEffect(() => {
@@ -30,14 +46,21 @@ export const Expenses: React.FC = () => {
       ownerId: '', // Placeholder, handled by storageService
       category,
       amount: parseFloat(amount),
-      date,
+      date, // Salva a string exata do input (YYYY-MM-DD)
       description
     };
 
     await saveExpense(newExpense);
     loadExpenses();
+    
+    // Limpa campos mas mantém a data atual
     setAmount('');
     setDescription('');
+    
+    // Reseta para data de hoje correta
+    const d = new Date();
+    const offset = d.getTimezoneOffset() * 60000;
+    setDate(new Date(d.getTime() - offset).toISOString().split('T')[0]);
   };
 
   const handleDelete = async (id: string) => {
@@ -168,7 +191,8 @@ export const Expenses: React.FC = () => {
                       <td className="p-4 text-slate-700 dark:text-slate-300 whitespace-nowrap font-medium">
                         <div className="flex items-center gap-2">
                           <Calendar size={14} className="text-slate-400" />
-                          {new Date(expense.date).toLocaleDateString()}
+                          {/* AQUI APLICAMOS A CORREÇÃO NA EXIBIÇÃO */}
+                          {formatDateDisplay(expense.date)}
                         </div>
                       </td>
                       <td className="p-4">
