@@ -1,14 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Client, ServiceRecord, PaymentMethod, User, ServiceLog } from '../types';
 import { saveService, updateService, getServicesByClient, bulkUpdateServices, deleteService, restoreService, getServiceLogs } from '../services/storageService';
-import { 
-    ArrowLeft, Plus, Calendar, MapPin, Filter, FileSpreadsheet, X, Bike, ChevronDown, 
-    FileText, ShieldCheck, Pencil, DollarSign, CheckCircle, AlertCircle, PieChart, List, 
-    CheckSquare, Square, MoreHorizontal, User as UserIcon, Building, MinusSquare, Share2, 
-    Phone, Mail, Banknote, QrCode, CreditCard, MessageCircle, Loader2, Download, Table, 
-    FileDown, Package, Clock, XCircle, Activity, Trash2, AlertTriangle, FileCheck, Timer, 
-    Hash, Copy, RotateCcw, Archive, History 
-} from 'lucide-react';
+import { ArrowLeft, Plus, Calendar, MapPin, Filter, FileSpreadsheet, X, Bike, ChevronDown, FileText, ShieldCheck, Pencil, DollarSign, CheckCircle, AlertCircle, PieChart, List, CheckSquare, Square, MoreHorizontal, User as UserIcon, Building, MinusSquare, Share2, Phone, Mail, Banknote, QrCode, CreditCard, MessageCircle, Loader2, Download, Table, FileDown, Package, Clock, XCircle, Activity, Trash2, AlertTriangle, FileCheck, Timer, Hash, Copy, RotateCcw, Archive, History } from 'lucide-react';
 // @ts-ignore
 import { jsPDF } from 'jspdf';
 // @ts-ignore
@@ -495,7 +488,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                         {filteredServices.map(s => (
                             <tr key={s.id} className="border-b hover:bg-slate-50 dark:hover:bg-slate-700">
                                 <td className="p-3">{new Date(s.date).toLocaleDateString()}</td>
-                                <td className="p-3 max-w-xs truncate">{s.pickupAddresses[0]} -> {s.deliveryAddresses[0]}</td>
+                                <td className="p-3 max-w-xs truncate">{s.pickupAddresses[0]} &rarr; {s.deliveryAddresses[0]}</td>
                                 <td className="p-3 text-right font-bold">R$ {s.cost.toFixed(2)}</td>
                                 <td className="p-3 flex justify-center gap-2">
                                     {showTrash ? (
