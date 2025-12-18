@@ -4,103 +4,116 @@ import { Client, ServiceRecord, ExpenseRecord } from '../types';
 import { TrendingUp, DollarSign, Bike, Wallet, Banknote, QrCode, CreditCard, CalendarDays, Calendar, Filter, Utensils, Fuel, Clock, Trophy, Package } from 'lucide-react';
 import { getServices, getExpenses, getClients } from '../services/storageService';
 
-// Ajuste da interface para não depender de props externas obrigatórias
 interface DashboardProps {
   currentUser?: any; 
 }
 
-type TimeFrame = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+type TimeFrame = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'CUSTOM';
 
-const getLocalDateStr = (d: Date) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
+// --- FUNÇÃO AUXILIAR DE FUSO HORÁRIO (SÃO PAULO) ---
+const getSaoPauloDateStr = (dateInput: Date | string) => {
+    let d: Date;
+    if (typeof dateInput === 'string') {
+        // Adiciona T12:00:00 para evitar problemas de virada de dia em UTC ao criar o objeto
+        // Se a string já tiver T, usa direto
+        d = dateInput.includes('T') ? new Date(dateInput) : new Date(dateInput + 'T12:00:00');
+    } else {
+        d = dateInput;
+    }
+
+    // Converte para o fuso de SP e formata YYYY-MM-DD
+    const spDate = new Date(d.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+    const year = spDate.getFullYear();
+    const month = String(spDate.getMonth() + 1).padStart(2, '0');
+    const day = String(spDate.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
 };
 
 export const Dashboard: React.FC<DashboardProps> = () => {
-  // 1. Estados locais para armazenar os dados
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<ServiceRecord[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('MONTHLY');
+  const [customStart, setCustomStart] = useState(getSaoPauloDateStr(new Date()));
+  const [customEnd, setCustomEnd] = useState(getSaoPauloDateStr(new Date()));
 
-  // 2. BUSCA DE DADOS AO CARREGAR A PÁGINA
+  const { startStr, endStr, dateLabel } = useMemo(() => {
+    // Usamos a data atual em SP
+    const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    
+    let s = '';
+    let e = '';
+    let l = '';
+
+    if (timeFrame === 'DAILY') {
+        s = getSaoPauloDateStr(now);
+        e = s;
+        l = 'Hoje';
+    } else if (timeFrame === 'WEEKLY') {
+        const start = new Date(now);
+        const day = start.getDay(); // 0 = Domingo
+        const diff = start.getDate() - day; // Ajusta para o último domingo
+        start.setDate(diff);
+        s = getSaoPauloDateStr(start);
+        
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6); // Sábado
+        e = getSaoPauloDateStr(end);
+        l = 'Esta Semana';
+    } else if (timeFrame === 'MONTHLY') {
+        const start = new Date(currentYear, currentMonth, 1);
+        const end = new Date(currentYear, currentMonth + 1, 0);
+        s = getSaoPauloDateStr(start);
+        e = getSaoPauloDateStr(end);
+        l = 'Este Mês';
+    } else if (timeFrame === 'YEARLY') {
+        const start = new Date(currentYear, 0, 1);
+        const end = new Date(currentYear, 11, 31);
+        s = getSaoPauloDateStr(start);
+        e = getSaoPauloDateStr(end);
+        l = 'Este Ano';
+    } else if (timeFrame === 'CUSTOM') {
+        s = customStart;
+        e = customEnd;
+        l = 'Período Personalizado';
+    }
+    return { startStr: s, endStr: e, dateLabel: l };
+  }, [timeFrame, customStart, customEnd]);
+
   useEffect(() => {
     const loadData = async () => {
+        setLoading(true);
         try {
             const [clientsData, servicesData, expensesData] = await Promise.all([
                 getClients(),
-                getServices(),
-                getExpenses()
+                getServices(startStr, endStr), 
+                getExpenses(startStr, endStr)
             ]);
             setClients(clientsData);
             setServices(servicesData);
-            setExpenses(expensesData); // <--- Aqui garantimos que as despesas são salvas
+            setExpenses(expensesData);
         } catch (error) {
             console.error("Erro ao carregar dados do dashboard:", error);
         } finally {
             setLoading(false);
         }
     };
-    loadData();
-  }, []);
-
-  // 3. Filtragem baseada no tempo (Hoje, Semana, Mês, Ano)
-  const { filteredServices, filteredExpenses, dateLabel } = useMemo(() => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-    
-    let startStr = '';
-    let endStr = '';
-    let label = '';
-
-    if (timeFrame === 'DAILY') {
-        startStr = getLocalDateStr(now);
-        endStr = startStr;
-        label = 'Hoje';
-    } else if (timeFrame === 'WEEKLY') {
-        const start = new Date(now);
-        const day = start.getDay(); 
-        const diff = start.getDate() - day;
-        start.setDate(diff);
-        startStr = getLocalDateStr(start);
-        
-        const end = new Date(start);
-        end.setDate(start.getDate() + 6);
-        endStr = getLocalDateStr(end);
-        label = 'Esta Semana';
-    } else if (timeFrame === 'MONTHLY') {
-        const start = new Date(currentYear, currentMonth, 1);
-        const end = new Date(currentYear, currentMonth + 1, 0);
-        startStr = getLocalDateStr(start);
-        endStr = getLocalDateStr(end);
-        label = 'Este Mês';
-    } else if (timeFrame === 'YEARLY') {
-        const start = new Date(currentYear, 0, 1);
-        const end = new Date(currentYear, 11, 31);
-        startStr = getLocalDateStr(start);
-        endStr = getLocalDateStr(end);
-        label = 'Este Ano';
+    if (startStr && endStr) {
+        loadData();
     }
+  }, [startStr, endStr]);
 
-    const filterByDate = (itemDate: string) => {
-        const dateStr = itemDate.includes('T') ? itemDate.split('T')[0] : itemDate;
-        return dateStr >= startStr && dateStr <= endStr;
-    };
-
+  const { filteredServices, filteredExpenses } = useMemo(() => {
     return {
-        // Importante: Filtramos serviços deletados (lixeira) aqui também
-        filteredServices: services.filter(s => filterByDate(s.date) && !s.deletedAt),
-        filteredExpenses: expenses.filter(e => filterByDate(e.date)),
-        dateLabel: label
+        filteredServices: services.filter(s => !s.deletedAt),
+        filteredExpenses: expenses 
     };
-  }, [services, expenses, timeFrame]);
+  }, [services, expenses]);
   
-  // 4. Cálculos dos Totais
   const stats = useMemo(() => {
     const totalRevenue = filteredServices.reduce((sum, s) => sum + s.cost, 0);
     const totalDriverPay = filteredServices.reduce((sum, s) => sum + (s.driverFee || 0), 0);
@@ -120,10 +133,7 @@ export const Dashboard: React.FC<DashboardProps> = () => {
         return acc;
     }, { PIX: 0, CASH: 0, CARD: 0 } as Record<string, number>);
 
-    // SOMA TOTAL DAS DESPESAS AQUI
     const totalOperationalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-    
-    // CÁLCULO DO LUCRO LÍQUIDO
     const netProfit = totalRevenue - totalDriverPay - totalOperationalExpenses;
 
     return { 
@@ -137,29 +147,38 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     };
   }, [filteredServices, filteredExpenses]);
 
-  // 5. Dados para o Gráfico
+  // --- CORREÇÃO DO GRÁFICO (DATA MANUAL + FUSO SP) ---
   const chartData = useMemo(() => {
     const dataMap = new Map<string, { name: string, revenue: number, cost: number, profit: number, sortKey: number }>();
 
-    const addToMap = (dateStr: string, revenue: number, cost: number) => {
-        if (!dateStr) return;
-        const normalizedDateStr = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-        const [y, m, d] = normalizedDateStr.split('-').map(Number);
-        const date = new Date(y, m - 1, d);
+    const addToMap = (rawDateStr: string, revenue: number, cost: number) => {
+        if (!rawDateStr) return;
+        
+        // 1. Converter a data bruta para a data correta em SP ("YYYY-MM-DD")
+        const spDateStr = getSaoPauloDateStr(rawDateStr);
+        
+        // 2. Separar ano, mês e dia
+        const [yearStr, monthStr, dayStr] = spDateStr.split('-');
+        const y = parseInt(yearStr);
+        const m = parseInt(monthStr);
+        const d = parseInt(dayStr);
         
         let key = '';
         let label = '';
         let order = 0;
 
         if (timeFrame === 'YEARLY') {
-             key = `${date.getFullYear()}-${date.getMonth()}`;
-             const monthName = date.toLocaleDateString('pt-BR', { month: 'short' });
+             key = `${y}-${m}`;
+             const dateObj = new Date(y, m - 1, 1);
+             const monthName = dateObj.toLocaleDateString('pt-BR', { month: 'short' });
              label = monthName.charAt(0).toUpperCase() + monthName.slice(1);
-             order = date.getMonth();
+             order = m;
         } else {
-             key = normalizedDateStr;
-             label = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-             order = date.getTime();
+             key = spDateStr;
+             // Monta string DD/MM explicitamente para não haver erro de interpretação
+             label = `${dayStr}/${monthStr}`; 
+             // Timestamp apenas para ordenação
+             order = new Date(y, m - 1, d).getTime();
         }
 
         const entry = dataMap.get(key) || { name: label, revenue: 0, cost: 0, profit: 0, sortKey: order };
@@ -169,7 +188,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     };
 
     filteredServices.forEach(s => addToMap(s.date, s.cost, s.driverFee || 0));
-    // ADICIONA AS DESPESAS NO GRÁFICO (CUSTO)
     filteredExpenses.forEach(e => addToMap(e.date, 0, e.amount));
 
     let result = Array.from(dataMap.values())
@@ -179,7 +197,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
     return result;
   }, [filteredServices, filteredExpenses, timeFrame]);
 
-  // 6. Top Clientes
   const topClients = useMemo(() => {
     const clientStats = new Map<string, { name: string, count: number, revenue: number }>();
     
@@ -208,7 +225,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
   return (
     <div className="space-y-6 animate-fade-in">
       
-      {/* HEADER & GLOBAL FILTER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
         <div>
             <h1 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -221,7 +237,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             </p>
         </div>
 
-        {/* Time Controls */}
         <div className="flex bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm self-start md:self-auto overflow-x-auto max-w-full items-center">
             <button 
                 onClick={() => setTimeFrame('DAILY')}
@@ -247,6 +262,32 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             >
                 Ano
             </button>
+
+            <button 
+                onClick={() => setTimeFrame('CUSTOM')}
+                className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1 ${timeFrame === 'CUSTOM' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-white'}`}
+            >
+                <Filter size={14} />
+                Personalizado
+            </button>
+
+            {timeFrame === 'CUSTOM' && (
+                <div className="flex items-center gap-2 ml-2 px-2 border-l border-slate-200 dark:border-slate-600 animate-fade-in">
+                    <input 
+                        type="date" 
+                        value={customStart}
+                        onChange={(e) => setCustomStart(e.target.value)}
+                        className="p-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-transparent dark:text-white outline-none focus:border-blue-500"
+                    />
+                    <span className="text-slate-400 font-bold">-</span>
+                    <input 
+                        type="date" 
+                        value={customEnd}
+                        onChange={(e) => setCustomEnd(e.target.value)}
+                        className="p-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-transparent dark:text-white outline-none focus:border-blue-500"
+                    />
+                </div>
+            )}
         </div>
       </div>
       
@@ -350,7 +391,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
 
         {/* Right Column: Expenses & Methods */}
         <div className="flex flex-col gap-6">
-            {/* Revenue Breakdown by Method */}
             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Receitas por Método</h2>
                 <div className="space-y-4">
@@ -378,7 +418,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
                 </div>
             </div>
 
-            {/* Expense Breakdown */}
             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex-1">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Detalhamento de Gastos</h2>
                 <div className="space-y-4">
@@ -417,7 +456,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
 
       {/* Top Clients Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top Clients by Revenue */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
             <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-4">
                 <Trophy size={20} className="text-yellow-500" />
@@ -442,7 +480,6 @@ export const Dashboard: React.FC<DashboardProps> = () => {
             </div>
         </div>
 
-        {/* Top Clients by Volume */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
             <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-4">
                 <Package size={20} className="text-blue-500" />
