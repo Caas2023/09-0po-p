@@ -1,452 +1,307 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Filter, ClipboardList, Trash2, AlertTriangle, X, LayoutGrid, LayoutList, Trophy, RotateCcw, Archive } from 'lucide-react';
-import { Client, ServiceRecord, User } from '../types';
-import { saveClient, deleteClient, restoreClient } from '../services/storageService';
+import { 
+  Search, 
+  Plus, 
+  User, 
+  MapPin, 
+  Phone, 
+  Briefcase, 
+  ChevronRight, 
+  X,
+  Building 
+} from 'lucide-react';
+import { Client, User as UserType, ServiceRecord } from '../types';
 import { useNavigate } from 'react-router-dom';
+import { saveClient } from '../services/storageService';
 import { toast } from 'sonner';
 
 interface ClientListProps {
-    clients: Client[];
-    services: ServiceRecord[];
-    currentUser: User;
-    onRefresh: () => void;
+  clients: Client[];
+  services: ServiceRecord[];
+  currentUser: UserType;
+  onRefresh: () => void;
 }
 
-export function ClientList({ clients, services, currentUser, onRefresh }: ClientListProps) {
-    const navigate = useNavigate();
-    const [isAdding, setIsAdding] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [filterCategory, setFilterCategory] = useState('Todos');
+// --- MÁSCARAS ---
+const formatPhone = (value: string) => {
+    const v = value.replace(/\D/g, "");
+    // Formato (11) 99999-9999
+    return v
+        .replace(/^(\d\d)(\d)/g, "($1) $2")
+        .replace(/(\d{5})(\d)/, "$1-$2")
+        .slice(0, 15);
+};
+
+const formatCnpjCpf = (value: string) => {
+    const v = value.replace(/\D/g, "");
     
-    // Novo estado para controlar o modo de visualização (Grade ou Lista)
-    const [viewMode, setViewMode] = useState<'GRID' | 'LIST'>('GRID');
+    if (v.length <= 11) {
+        // CPF: 000.000.000-00
+        return v
+            .replace(/(\d{3})(\d)/, "$1.$2")
+            .replace(/(\d{3})(\d)/, "$1.$2")
+            .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+    } else {
+        // CNPJ: 00.000.000/0000-00
+        return v
+            .replace(/^(\d{2})(\d)/, "$1.$2")
+            .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+            .replace(/\.(\d{3})(\d)/, ".$1/$2")
+            .replace(/(\d{4})(\d)/, "$1-$2")
+            .slice(0, 18);
+    }
+};
 
-    // Estado para "Lixeira"
-    const [showTrash, setShowTrash] = useState(false);
+export const ClientList: React.FC<ClientListProps> = ({ clients, services, currentUser, onRefresh }) => {
+  const navigate = useNavigate();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  
+  const [newClient, setNewClient] = useState<Partial<Client>>({
+    name: '',
+    email: '',
+    phone: '',
+    category: 'Avulso',
+    address: '',
+    contactPerson: '',
+    cnpj: ''
+  });
 
-    // Estado para controle do Modal de Exclusão
-    const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
-    const [isDeleting, setIsDeleting] = useState(false);
-
-    // Estados do Formulário
-    const [newClientName, setNewClientName] = useState('');
-    const [newClientEmail, setNewClientEmail] = useState('');
-    const [newClientPhone, setNewClientPhone] = useState('');
-    const [newClientCategory, setNewClientCategory] = useState('Varejo');
-    const [newClientAddress, setNewClientAddress] = useState('');
-    const [newClientContact, setNewClientContact] = useState('');
-    const [newClientCnpj, setNewClientCnpj] = useState('');
-
-    const categories = ['Varejo', 'Serviços', 'Logística', 'Saúde', 'Tecnologia', 'Construção', 'Educação', 'Automotivo', 'Eventos', 'Outros'];
-
-    // Função auxiliar para contar serviços (agora usamos ela também na ordenação)
-    const getServiceCount = (clientId: string) => {
-        return services.filter(s => s.clientId === clientId && !s.deletedAt).length;
-    };
-
-    const handleAddClient = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!currentUser) return;
-
-        const client: Client = {
-            id: crypto.randomUUID(),
-            ownerId: currentUser.id,
-            name: newClientName,
-            email: newClientEmail,
-            phone: newClientPhone,
-            category: newClientCategory,
-            address: newClientAddress,
-            contactPerson: newClientContact,
-            cnpj: newClientCnpj,
-            createdAt: new Date().toISOString()
-        };
-        await saveClient(client);
-        setIsAdding(false);
-        toast.success('Cliente cadastrado com sucesso!');
-        onRefresh();
-
-        // Reset form
-        setNewClientName('');
-        setNewClientEmail('');
-        setNewClientPhone('');
-        setNewClientCategory('Varejo');
-        setNewClientAddress('');
-        setNewClientContact('');
-        setNewClientCnpj('');
-    };
-
-    // Função para confirmar e executar a exclusão
-    const confirmDelete = async () => {
-        if (!clientToDelete) return;
-        setIsDeleting(true);
-        try {
-            await deleteClient(clientToDelete.id);
-            toast.success('Cliente movido para lixeira.');
-            onRefresh(); // Atualiza a lista
-        } catch (error) {
-            toast.error('Erro ao remover cliente.');
-            console.error(error);
-        } finally {
-            setIsDeleting(false);
-            setClientToDelete(null); // Fecha o modal
-        }
-    };
-
-    const handleRestore = async (client: Client) => {
-        if (confirm(`Deseja restaurar o cliente ${client.name}?`)) {
-            await restoreClient(client.id);
-            toast.success('Cliente restaurado com sucesso!');
-            onRefresh();
-        }
-    };
-
-    // LÓGICA DE FILTRO E ORDENAÇÃO ATUALIZADA
-    const filteredAndSortedClients = useMemo(() => {
-        // 1. Filtrar por Busca, Categoria e STATUS (Deletado ou Ativo)
-        const filtered = clients.filter(client => {
-            const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                client.phone.includes(searchTerm);
-
-            const matchesCategory = filterCategory === 'Todos' || (client.category || 'Outros') === filterCategory;
-
-            // Filtro Lógica de Lixeira
-            const isDeleted = !!client.deletedAt;
-            const matchesStatus = showTrash ? isDeleted : !isDeleted;
-
-            return matchesSearch && matchesCategory && matchesStatus;
-        });
-
-        // 2. Ordenar (Quem tem mais serviços fica em cima)
-        return filtered.sort((a, b) => {
-            const countA = getServiceCount(a.id);
-            const countB = getServiceCount(b.id);
-
-            // Ordem decrescente de serviços (Maior para o menor)
-            if (countB !== countA) {
-                return countB - countA;
-            }
-            // Desempate por nome alfabético
-            return a.name.localeCompare(b.name);
-        });
-    }, [clients, searchTerm, filterCategory, services, showTrash]);
-
-    return (
-        <div className="space-y-6 animate-fade-in relative">
-            
-            {/* --- MODAL DE CONFIRMAÇÃO DE EXCLUSÃO --- */}
-            {clientToDelete && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-700 animate-slide-up">
-                        <div className="p-6 text-center">
-                            <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <AlertTriangle size={32} className="text-red-600 dark:text-red-500" />
-                            </div>
-                            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Excluir Cliente?</h3>
-                            <p className="text-slate-600 dark:text-slate-400 mb-6">
-                                Tem certeza que deseja mover <strong>{clientToDelete.name}</strong> para a lixeira? 
-                                <br/>Você poderá restaurá-lo depois se necessário.
-                            </p>
-                            
-                            <div className="flex gap-3 justify-center">
-                                <button 
-                                    onClick={() => setClientToDelete(null)}
-                                    className="px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                                    disabled={isDeleting}
-                                >
-                                    Cancelar
-                                </button>
-                                <button 
-                                    onClick={confirmDelete}
-                                    className="px-5 py-2.5 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition-colors shadow-sm flex items-center gap-2"
-                                    disabled={isDeleting}
-                                >
-                                    {isDeleting ? 'Excluindo...' : 'Sim, Excluir'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div className="flex items-center gap-2">
-                    <h1 className="text-2xl font-bold text-slate-800 dark:text-white">
-                        {showTrash ? 'Lixeira de Clientes' : 'Clientes'}
-                    </h1>
-                    {showTrash && (
-                        <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-bold rounded-md uppercase">Modo Lixeira</span>
-                    )}
-                </div>
-
-                <div className="flex gap-2 w-full md:w-auto flex-wrap">
-                    {/* Botão Toggle Lixeira (Admin Only - assumindo que qualquer um com acesso a lista pode ver por enquanto ou currentUser.role === 'ADMIN') */}
-                    {currentUser.role === 'ADMIN' && (
-                        <button
-                            onClick={() => setShowTrash(!showTrash)}
-                            className={`px-3 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors ${
-                                showTrash 
-                                    ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300' 
-                                    : 'bg-white border border-slate-200 text-slate-500 hover:text-red-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:text-red-400'
-                            }`}
-                            title={showTrash ? "Voltar para Clientes Ativos" : "Ver Clientes Excluídos"}
-                        >
-                            {showTrash ? <Search size={18} /> : <Archive size={18} />}
-                            <span className="hidden sm:inline">{showTrash ? "Ver Ativos" : "Lixeira"}</span>
-                        </button>
-                    )}
-
-                    {!showTrash && (
-                        <>
-                            {/* Botões de Alternância de Visualização */}
-                            <div className="flex bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
-                                <button 
-                                    onClick={() => setViewMode('GRID')}
-                                    className={`p-2 rounded-md transition-all ${viewMode === 'GRID' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-slate-400 hover:text-slate-600'}`}
-                                    title="Visualização em Grade"
-                                >
-                                    <LayoutGrid size={20} />
-                                </button>
-                                <button 
-                                    onClick={() => setViewMode('LIST')}
-                                    className={`p-2 rounded-md transition-all ${viewMode === 'LIST' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-slate-400 hover:text-slate-600'}`}
-                                    title="Visualização em Lista"
-                                >
-                                    <LayoutList size={20} />
-                                </button>
-                            </div>
-
-                            <button
-                                onClick={() => setIsAdding(!isAdding)}
-                                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex-1 md:flex-none"
-                            >
-                                {isAdding ? 'Cancelar' : 'Adicionar Cliente'}
-                            </button>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            {/* Search and Filter Bar */}
-            <div className="flex flex-col md:flex-row gap-4">
-                <div className="relative flex-1">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                        <Search size={20} />
-                    </div>
-                    <input
-                        type="text"
-                        placeholder={showTrash ? "Buscar cliente excluído..." : "Buscar por nome, email ou telefone..."}
-                        className="w-full pl-10 p-3 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none shadow-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                    />
-                </div>
-
-                <div className="relative min-w-[200px]">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                        <Filter size={18} />
-                    </div>
-                    <select
-                        value={filterCategory}
-                        onChange={(e) => setFilterCategory(e.target.value)}
-                        className="w-full pl-10 p-3 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none shadow-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white appearance-none cursor-pointer"
-                    >
-                        <option value="Todos">Todas Categorias</option>
-                        {categories.map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                    </select>
-                </div>
-            </div>
-
-            {isAdding && !showTrash && (
-                <form onSubmit={handleAddClient} className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 animate-slide-down">
-                    <h3 className="font-semibold text-slate-800 dark:text-white mb-4">Novo Cliente</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Nome da Empresa *</label>
-                            <input required placeholder="Ex: Minha Loja Ltda" className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newClientName} onChange={e => setNewClientName(e.target.value)} />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Categoria</label>
-                            <select
-                                className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                                value={newClientCategory}
-                                onChange={e => setNewClientCategory(e.target.value)}
-                            >
-                                {categories.map(cat => (
-                                    <option key={cat} value={cat}>{cat}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Email</label>
-                            <input 
-                                placeholder="contato@empresa.com" 
-                                type="email" 
-                                className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white" 
-                                value={newClientEmail} 
-                                onChange={e => setNewClientEmail(e.target.value)} 
-                            />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Telefone *</label>
-                            <input required placeholder="(11) 99999-9999" className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newClientPhone} onChange={e => setNewClientPhone(e.target.value)} />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">CNPJ</label>
-                            <input placeholder="00.000.000/0001-00" className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newClientCnpj} onChange={e => setNewClientCnpj(e.target.value)} />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Responsável / Contato</label>
-                            <input placeholder="Nome da pessoa de contato" className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newClientContact} onChange={e => setNewClientContact(e.target.value)} />
-                        </div>
-
-                        <div className="md:col-span-2 space-y-1">
-                            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Endereço Completo</label>
-                            <input placeholder="Rua, Número, Bairro, Cidade - UF" className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newClientAddress} onChange={e => setNewClientAddress(e.target.value)} />
-                        </div>
-                    </div>
-                    <div className="mt-6 flex justify-end gap-3">
-                        <button type="button" onClick={() => setIsAdding(false)} className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">Cancelar</button>
-                        <button type="submit" className="bg-emerald-600 text-white px-6 py-2 rounded-lg hover:bg-emerald-700 font-medium transition-colors">Salvar Cliente</button>
-                    </div>
-                </form>
-            )}
-
-            {filteredAndSortedClients.length === 0 ? (
-                <div className="col-span-full py-12 text-center text-slate-400">
-                    {showTrash 
-                        ? "A lixeira está vazia." 
-                        : (clients.length === 0 
-                            ? "Você ainda não possui clientes. Adicione o primeiro acima!" 
-                            : "Nenhum cliente encontrado para a busca selecionada.")}
-                </div>
-            ) : (
-                <div className={(viewMode === 'GRID' && !showTrash) ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "flex flex-col gap-3"}>
-                    {filteredAndSortedClients.map((client, index) => {
-                        const count = getServiceCount(client.id);
-                        
-                        // Destaque visual para o TOP 3 (apenas no modo GRID e não lixeira)
-                        const isTopRank = !showTrash && index < 3 && count > 0;
-                        const rankColor = index === 0 ? 'text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200' : 
-                                          index === 1 ? 'text-slate-400 bg-slate-100 dark:bg-slate-700 border-slate-300' :
-                                          'text-orange-500 bg-orange-50 dark:bg-orange-900/20 border-orange-200';
-
-                        // MODO LISTA OU LIXEIRA (Sempre em lista na lixeira)
-                        if (viewMode === 'LIST' || showTrash) {
-                            return (
-                                <div
-                                    key={client.id}
-                                    onClick={() => !showTrash && navigate(`/clients/${client.id}`)}
-                                    className={`bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 transition-colors flex justify-between items-center group ${!showTrash ? 'hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer' : 'opacity-75 hover:opacity-100'}`}
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${isTopRank ? rankColor : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
-                                            {isTopRank ? <Trophy size={14} /> : (showTrash ? <Trash2 size={14} /> : index + 1)}
-                                        </div>
-                                        <div>
-                                            <h3 className="font-semibold text-slate-800 dark:text-white group-hover:text-blue-600">
-                                                {client.name}
-                                                {showTrash && <span className="ml-2 text-xs text-red-500">(Excluído)</span>}
-                                            </h3>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400">{client.category}</p>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="flex items-center gap-6">
-                                        <div className="text-right hidden sm:block">
-                                            <p className="text-xs text-slate-500 dark:text-slate-400">{client.phone}</p>
-                                            <p className="text-xs text-slate-400 dark:text-slate-500">{client.contactPerson || '-'}</p>
-                                        </div>
-                                        
-                                        {!showTrash && (
-                                            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700">
-                                                <ClipboardList size={16} className="text-blue-500" />
-                                                <span className="font-bold text-slate-700 dark:text-slate-200">{count}</span>
-                                            </div>
-                                        )}
-
-                                        {showTrash ? (
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleRestore(client); }}
-                                                className="p-2 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-full transition-colors flex items-center gap-2"
-                                                title="Restaurar Cliente"
-                                            >
-                                                <RotateCcw size={16} />
-                                                <span className="text-sm font-bold hidden sm:inline">Restaurar</span>
-                                            </button>
-                                        ) : (
-                                            <button 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setClientToDelete(client);
-                                                }}
-                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors"
-                                                title="Mover para Lixeira"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        } else {
-                            // --- MODO GRADE (Cartões Atuais - Apenas Ativos) ---
-                            return (
-                                <div
-                                    key={client.id}
-                                    onClick={() => navigate(`/clients/${client.id}`)}
-                                    className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group relative"
-                                >
-                                    <div className="absolute top-4 right-4 flex items-center gap-2">
-                                        {isTopRank && (
-                                            <div className={`p-1 rounded-full border ${rankColor}`} title="Top Cliente">
-                                                <Trophy size={12} />
-                                            </div>
-                                        )}
-                                        <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-md border border-slate-200 dark:border-slate-600">
-                                            {client.category || 'Sem Categoria'}
-                                        </span>
-                                        
-                                        <button 
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setClientToDelete(client);
-                                            }}
-                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-colors"
-                                            title="Excluir Cliente"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
-
-                                    <h3 className="text-lg font-semibold text-slate-800 dark:text-white group-hover:text-blue-600 mb-1 pr-24 truncate">{client.name}</h3>
-                                    {client.contactPerson && <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">Contato: {client.contactPerson}</p>}
-
-                                    <div className="text-sm text-slate-500 dark:text-slate-400 space-y-1">
-                                        <p className="truncate">{client.email || 'Sem email'}</p>
-                                        <p>{client.phone}</p>
-                                    </div>
-
-                                    <div className="mt-4 pt-4 border-t border-slate-50 dark:border-slate-700 flex justify-between items-center">
-                                        <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/50 px-2 py-1 rounded-md text-xs font-bold">
-                                            <ClipboardList size={14} className="text-blue-500" />
-                                            {count} {count === 1 ? 'Serviço' : 'Serviços'}
-                                        </div>
-                                        <span className="font-medium text-blue-500 group-hover:underline text-xs">Ver Detalhes &rarr;</span>
-                                    </div>
-                                </div>
-                            );
-                        }
-                    })}
-                </div>
-            )}
-        </div>
+  const filteredClients = useMemo(() => {
+    return clients.filter(c => 
+      !c.deletedAt && // Filtra os deletados
+      (c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.contactPerson?.toLowerCase().includes(searchTerm.toLowerCase()))
     );
-}
+  }, [clients, searchTerm]);
+
+  // Handler inteligente para aplicar máscaras
+  const handleInputChange = (field: keyof Client, value: string) => {
+      let formattedValue = value;
+      
+      if (field === 'phone') {
+          formattedValue = formatPhone(value);
+      } else if (field === 'cnpj') {
+          formattedValue = formatCnpjCpf(value);
+      }
+
+      setNewClient({ ...newClient, [field]: formattedValue });
+  };
+
+  const handleSaveClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newClient.name) return;
+
+    const clientToSave: Client = {
+      id: crypto.randomUUID(),
+      ownerId: currentUser.id,
+      name: newClient.name!,
+      email: newClient.email || '',
+      phone: newClient.phone || '',
+      category: newClient.category || 'Avulso',
+      address: newClient.address || '',
+      contactPerson: newClient.contactPerson || '',
+      cnpj: newClient.cnpj || '',
+      createdAt: new Date().toISOString()
+    };
+
+    await saveClient(clientToSave);
+    toast.success('Cliente cadastrado!');
+    setShowModal(false);
+    setNewClient({ name: '', email: '', phone: '', category: 'Avulso', address: '', contactPerson: '', cnpj: '' });
+    onRefresh();
+  };
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Meus Clientes</h1>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">Gerencie sua carteira de clientes</p>
+        </div>
+        <button 
+          onClick={() => setShowModal(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors shadow-sm"
+        >
+          <Plus size={20} />
+          Novo Cliente
+        </button>
+      </div>
+
+      {/* Search Bar */}
+      <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+        <div className="relative">
+          <Search className="absolute left-3 top-3 text-slate-400" size={20} />
+          <input 
+            type="text" 
+            placeholder="Buscar por nome, empresa ou responsável..." 
+            className="w-full pl-10 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filteredClients.length === 0 ? (
+            <div className="col-span-full py-12 text-center text-slate-400">
+                Nenhum cliente encontrado.
+            </div>
+        ) : (
+            filteredClients.map(client => (
+            <div 
+                key={client.id} 
+                onClick={() => navigate(`/clients/${client.id}`)}
+                className="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:shadow-md transition-all cursor-pointer group relative overflow-hidden"
+            >
+                <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                
+                <div className="flex justify-between items-start mb-3">
+                <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400">
+                    <Briefcase size={20} />
+                </div>
+                <span className="text-xs font-bold px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full border border-slate-200 dark:border-slate-600">
+                    {client.category}
+                </span>
+                </div>
+
+                <h3 className="font-bold text-slate-800 dark:text-white text-lg mb-1 truncate pr-4">{client.name}</h3>
+                
+                <div className="space-y-2 mt-4">
+                {client.contactPerson && (
+                    <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                    <User size={14} />
+                    {client.contactPerson}
+                    </div>
+                )}
+                {client.phone && (
+                    <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                    <Phone size={14} />
+                    {client.phone}
+                    </div>
+                )}
+                {client.address && (
+                    <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 truncate">
+                    <MapPin size={14} className="shrink-0" />
+                    <span className="truncate">{client.address}</span>
+                    </div>
+                )}
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                    <span className="text-xs font-bold text-blue-600 dark:text-blue-400 group-hover:underline">Ver detalhes</span>
+                    <ChevronRight size={16} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                </div>
+            </div>
+            ))
+        )}
+      </div>
+
+      {/* Modal Novo Cliente */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-xl shadow-2xl p-6 relative animate-slide-up">
+            <button 
+              onClick={() => setShowModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+            >
+              <X size={24} />
+            </button>
+            
+            <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
+              <Plus className="text-blue-600" />
+              Novo Cliente
+            </h2>
+
+            <form onSubmit={handleSaveClient} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Nome da Empresa / Cliente</label>
+                <input 
+                  required 
+                  className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
+                  value={newClient.name}
+                  onChange={e => handleInputChange('name', e.target.value)}
+                  placeholder="Ex: Logística LTDA"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Responsável</label>
+                  <input 
+                    className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
+                    value={newClient.contactPerson}
+                    onChange={e => handleInputChange('contactPerson', e.target.value)}
+                    placeholder="Nome do contato"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Telefone / WhatsApp</label>
+                  <input 
+                    className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
+                    value={newClient.phone}
+                    onChange={e => handleInputChange('phone', e.target.value)}
+                    placeholder="(11) 99999-9999"
+                    maxLength={15}
+                  />
+                </div>
+              </div>
+
+              <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">CPF ou CNPJ</label>
+                  <input 
+                    className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
+                    value={newClient.cnpj}
+                    onChange={e => handleInputChange('cnpj', e.target.value)}
+                    placeholder="000.000.000-00"
+                    maxLength={18}
+                  />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Endereço Completo</label>
+                <input 
+                  className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
+                  value={newClient.address}
+                  onChange={e => handleInputChange('address', e.target.value)}
+                  placeholder="Rua, Número, Bairro, Cidade"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Categoria</label>
+                  <select 
+                    className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
+                    value={newClient.category}
+                    onChange={e => handleInputChange('category', e.target.value)}
+                  >
+                    <option value="Avulso">Avulso</option>
+                    <option value="Mensalista">Mensalista</option>
+                    <option value="Parceiro">Parceiro</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Email</label>
+                  <input 
+                    type="email"
+                    className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
+                    value={newClient.email}
+                    onChange={e => handleInputChange('email', e.target.value)}
+                    placeholder="email@empresa.com"
+                  />
+                </div>
+              </div>
+
+              <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow-lg mt-2 transition-colors">
+                Salvar Cliente
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
