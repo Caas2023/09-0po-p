@@ -1,418 +1,356 @@
-import React, { useState } from 'react';
-import { Client, ServiceStatus, PaymentMethod } from '../types';
-import { saveService } from '../services/storageService'; 
-import { ArrowLeft, MapPin, Plus, X, User, Calendar, DollarSign, Bike, CheckCircle, Hash, Timer } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  ArrowLeft, 
+  MapPin, 
+  DollarSign, 
+  Bike, 
+  Calendar, 
+  User, 
+  Hash, 
+  CheckCircle, 
+  X,
+  Plus,
+  Timer,
+  Building // Ícone do botão
+} from 'lucide-react';
+import { Client, ServiceRecord, PaymentMethod, User as UserType } from '../types';
+import { getClients, saveService } from '../services/storageService';
+import { toast } from 'sonner';
 
 interface NewOrderProps {
-    clients: Client[];
-    onSave: () => void;
-    onCancel: () => void;
-    currentUserId?: string;
+  currentUser: UserType;
 }
 
-export const NewOrder: React.FC<NewOrderProps> = ({ clients, onSave, onCancel }) => {
-    const [selectedClientId, setSelectedClientId] = useState<string>('');
-    const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
-    
-    // --- CAMPO AGORA É 100% MANUAL ---
-    const [manualOrderId, setManualOrderId] = useState(''); 
+const getLocalDateStr = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
-    const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
-    const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
-    
-    // Estados Financeiros
-    const [cost, setCost] = useState('');
-    const [driverFee, setDriverFee] = useState('');
-    const [waitingTime, setWaitingTime] = useState(''); 
-    const [extraFee, setExtraFee] = useState('');
-    
-    const [requester, setRequester] = useState('');
-    const [paid, setPaid] = useState(false);
-    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
-    const [status, setStatus] = useState<ServiceStatus>('PENDING');
+export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
+  const [clients, setClients] = useState<Client[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState('');
+  
+  // Encontra o cliente selecionado para pegar o endereço dele
+  const selectedClient = clients.find(c => c.id === selectedClientId);
 
-    const handleAddAddress = (type: 'pickup' | 'delivery') => {
-        if (type === 'pickup') {
-            setPickupAddresses([...pickupAddresses, '']);
-        } else {
-            setDeliveryAddresses([...deliveryAddresses, '']);
-        }
+  const [date, setDate] = useState(getLocalDateStr(new Date()));
+  const [manualOrderId, setManualOrderId] = useState('');
+  const [requester, setRequester] = useState('');
+  
+  const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
+  const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
+  
+  const [cost, setCost] = useState('');
+  const [driverFee, setDriverFee] = useState('');
+  const [waitingTime, setWaitingTime] = useState('');
+  const [extraFee, setExtraFee] = useState('');
+  
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
+  const [paid, setPaid] = useState(false);
+
+  useEffect(() => {
+    const loadClients = async () => {
+      const data = await getClients();
+      setClients(data);
     };
+    loadClients();
+  }, []);
 
-    const handleRemoveAddress = (type: 'pickup' | 'delivery', index: number) => {
-        if (type === 'pickup') {
-            if (pickupAddresses.length > 1) {
-                setPickupAddresses(pickupAddresses.filter((_, i) => i !== index));
-            }
-        } else {
-            if (deliveryAddresses.length > 1) {
-                setDeliveryAddresses(deliveryAddresses.filter((_, i) => i !== index));
-            }
-        }
-    };
+  const handleAddAddress = (type: 'pickup' | 'delivery') => {
+    if (type === 'pickup') setPickupAddresses([...pickupAddresses, '']);
+    else setDeliveryAddresses([...deliveryAddresses, '']);
+  };
 
-    const handleAddressChange = (type: 'pickup' | 'delivery', index: number, value: string) => {
-        if (type === 'pickup') {
-            const newAddresses = [...pickupAddresses];
-            newAddresses[index] = value;
-            setPickupAddresses(newAddresses);
-        } else {
-            const newAddresses = [...deliveryAddresses];
-            newAddresses[index] = value;
-            setDeliveryAddresses(newAddresses);
-        }
-    };
+  const handleRemoveAddress = (type: 'pickup' | 'delivery', index: number) => {
+    if (type === 'pickup') {
+      if (pickupAddresses.length > 1) setPickupAddresses(pickupAddresses.filter((_, i) => i !== index));
+    } else {
+      if (deliveryAddresses.length > 1) setDeliveryAddresses(deliveryAddresses.filter((_, i) => i !== index));
+    }
+  };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+  const handleAddressChange = (type: 'pickup' | 'delivery', index: number, value: string) => {
+    if (type === 'pickup') {
+      const newArr = [...pickupAddresses];
+      newArr[index] = value;
+      setPickupAddresses(newArr);
+    } else {
+      const newArr = [...deliveryAddresses];
+      newArr[index] = value;
+      setDeliveryAddresses(newArr);
+    }
+  };
 
-        if (!selectedClientId) {
-            alert('Por favor, selecione um cliente.');
-            return;
-        }
-
-        const cleanPickups = pickupAddresses.filter(a => a.trim() !== '');
-        const cleanDeliveries = deliveryAddresses.filter(a => a.trim() !== '');
-
-        if (cleanPickups.length === 0 || cleanDeliveries.length === 0) {
-            alert('Por favor, insira pelo menos um endereço de coleta e um de entrega.');
-            return;
-        }
-
-        // Montagem do objeto com o ID Manual garantido
-        const serviceData: any = {
-            id: crypto.randomUUID(),
-            ownerId: '', 
-            clientId: selectedClientId,
-            pickupAddresses: cleanPickups,
-            deliveryAddresses: cleanDeliveries,
-            cost: parseFloat(cost),
-            driverFee: parseFloat(driverFee) || 0,
-            
-            waitingTime: parseFloat(waitingTime) || 0, 
-            extraFee: parseFloat(extraFee) || 0,
-            
-            // GARANTE QUE O VALOR MANUAL SEJA SALVO
-            manualOrderId: manualOrderId.trim(), 
-
-            requesterName: requester,
-            date: serviceDate,
-            paid: paid,
-            paymentMethod: paymentMethod,
-            status: status
-        };
-
-        await saveService(serviceData);
-        onSave();
-    };
-
-    // Cálculos visuais
-    const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
-    const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
-
-    if (clients.length === 0) {
-        return (
-            <div className="flex flex-col items-center justify-center h-96 text-center animate-fade-in">
-                <div className="bg-slate-100 dark:bg-slate-800 p-6 rounded-full mb-4">
-                    <User size={48} className="text-slate-400" />
-                </div>
-                <h2 className="text-xl font-semibold text-slate-800 dark:text-white mb-2">Nenhum Cliente Encontrado</h2>
-                <button onClick={onCancel} className="text-blue-600 dark:text-blue-400 font-bold hover:underline">
-                    Voltar para Clientes
-                </button>
-            </div>
-        );
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedClientId) {
+      toast.error('Selecione um cliente.');
+      return;
     }
 
-    return (
-        <div className="max-w-4xl mx-auto animate-slide-up">
-            <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                    <button onClick={onCancel} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors">
-                        <ArrowLeft size={24} />
-                    </button>
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Nova Corrida</h1>
-                        <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Preencha os dados do serviço</p>
+    const cleanPickup = pickupAddresses.filter(a => a.trim());
+    const cleanDelivery = deliveryAddresses.filter(a => a.trim());
+
+    if (cleanPickup.length === 0 || cleanDelivery.length === 0) {
+      toast.error('Preencha os endereços.');
+      return;
+    }
+
+    const newService: ServiceRecord = {
+      id: crypto.randomUUID(),
+      ownerId: currentUser.id,
+      clientId: selectedClientId,
+      date,
+      manualOrderId,
+      requesterName: requester,
+      pickupAddresses: cleanPickup,
+      deliveryAddresses: cleanDelivery,
+      cost: parseFloat(cost) || 0,
+      driverFee: parseFloat(driverFee) || 0,
+      waitingTime: parseFloat(waitingTime) || 0,
+      extraFee: parseFloat(extraFee) || 0,
+      paymentMethod,
+      paid,
+      status: 'PENDING'
+    };
+
+    await saveService(newService);
+    toast.success('Corrida registrada!');
+    
+    // Reset Form
+    setManualOrderId('');
+    setRequester('');
+    setPickupAddresses(['']);
+    setDeliveryAddresses(['']);
+    setCost('');
+    setDriverFee('');
+    setWaitingTime('');
+    setExtraFee('');
+    setPaid(false);
+  };
+
+  const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
+  const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in pb-20">
+      <div className="flex items-center gap-4 mb-6">
+        <button onClick={() => window.history.back()} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
+            <ArrowLeft size={24} className="text-slate-600 dark:text-slate-300" />
+        </button>
+        <div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Nova Corrida</h1>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">Preencha os dados do serviço</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 space-y-6">
+        
+        {/* Seleção de Cliente */}
+        <div>
+            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Selecione o Cliente</label>
+            <div className="relative">
+                <User size={18} className="absolute left-3 top-3 text-slate-400" />
+                <select 
+                    value={selectedClientId} 
+                    onChange={e => setSelectedClientId(e.target.value)}
+                    className="w-full pl-10 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-600 appearance-none"
+                >
+                    <option value="">Escolha uma empresa...</option>
+                    {clients.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                </select>
+            </div>
+        </div>
+
+        {/* Dados Gerais */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Data</label>
+                <div className="relative">
+                    <Calendar size={16} className="absolute left-3 top-3 text-slate-400" />
+                    <input 
+                        type="date" 
+                        className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500" 
+                        value={date} 
+                        onChange={e => setDate(e.target.value)} 
+                    />
+                </div>
+            </div>
+            <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Nº Pedido</label>
+                <div className="relative">
+                    <Hash size={16} className="absolute left-3 top-3 text-slate-400" />
+                    <input 
+                        type="text" 
+                        className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500 uppercase" 
+                        placeholder="# EX: 1234"
+                        value={manualOrderId} 
+                        onChange={e => setManualOrderId(e.target.value)} 
+                    />
+                </div>
+            </div>
+            <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Solicitado Por</label>
+                <input 
+                    type="text" 
+                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500" 
+                    placeholder="Nome do funcionário"
+                    value={requester} 
+                    onChange={e => setRequester(e.target.value)} 
+                />
+            </div>
+        </div>
+
+        {/* Endereços */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* COLETA */}
+            <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                <h3 className="font-bold text-blue-600 dark:text-blue-400 text-sm flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500"></div> Coleta</h3>
+                {pickupAddresses.map((addr, idx) => (
+                    <div key={idx} className="flex gap-2 relative">
+                        <MapPin size={16} className="absolute left-3 top-3 text-blue-500" />
+                        <input 
+                            className="w-full pl-9 pr-36 p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" 
+                            value={addr} 
+                            onChange={e => handleAddressChange('pickup', idx, e.target.value)} 
+                            placeholder="Endereço de retirada" 
+                        />
+                        
+                        {/* BOTÃO MÁGICO: COPIAR DO CADASTRO (Só aparece se tiver cliente e endereço) */}
+                        {selectedClient?.address && (
+                            <button
+                                type="button"
+                                onClick={() => handleAddressChange('pickup', idx, selectedClient.address || '')}
+                                className="absolute right-8 top-1.5 px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs font-bold rounded-md flex items-center gap-1 transition-colors border border-blue-300"
+                                title="Usar endereço do cadastro"
+                            >
+                                <Building size={12} />
+                                Endereço Cliente
+                            </button>
+                        )}
+
+                        {pickupAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('pickup', idx)} className="absolute right-2 top-2.5"><X size={16} className="text-red-400" /></button>}
+                    </div>
+                ))}
+                <button type="button" onClick={() => handleAddAddress('pickup')} className="text-xs font-bold text-blue-500 flex items-center gap-1 mt-1"><Plus size={14} /> Adicionar Parada</button>
+            </div>
+
+            {/* ENTREGA */}
+            <div className="space-y-3 p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                <h3 className="font-bold text-emerald-600 dark:text-emerald-400 text-sm flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Entrega</h3>
+                {deliveryAddresses.map((addr, idx) => (
+                    <div key={idx} className="flex gap-2 relative">
+                        <MapPin size={16} className="absolute left-3 top-3 text-emerald-500" />
+                        <input 
+                            className="w-full pl-9 pr-36 p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:border-emerald-500 outline-none" 
+                            value={addr} 
+                            onChange={e => handleAddressChange('delivery', idx, e.target.value)} 
+                            placeholder="Endereço de destino" 
+                        />
+
+                        {/* BOTÃO MÁGICO: COPIAR DO CADASTRO */}
+                        {selectedClient?.address && (
+                            <button
+                                type="button"
+                                onClick={() => handleAddressChange('delivery', idx, selectedClient.address || '')}
+                                className="absolute right-8 top-1.5 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-bold rounded-md flex items-center gap-1 transition-colors border border-emerald-300"
+                                title="Usar endereço do cadastro"
+                            >
+                                <Building size={12} />
+                                Endereço Cliente
+                            </button>
+                        )}
+
+                        {deliveryAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('delivery', idx)} className="absolute right-2 top-2.5"><X size={16} className="text-red-400" /></button>}
+                    </div>
+                ))}
+                <button type="button" onClick={() => handleAddAddress('delivery')} className="text-xs font-bold text-emerald-500 flex items-center gap-1 mt-1"><Plus size={14} /> Adicionar Parada</button>
+            </div>
+        </div>
+
+        {/* Financeiro */}
+        <div>
+            <h3 className="font-bold text-slate-800 dark:text-white mb-4 text-sm border-b border-slate-200 dark:border-slate-700 pb-2">Financeiro e Adicionais</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-1">Valor da Corrida (R$)</label>
+                    <div className="relative">
+                        <DollarSign size={16} className="absolute left-3 top-3 text-emerald-500" />
+                        <input type="number" step="0.01" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white font-bold text-lg focus:border-emerald-500 outline-none" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00" />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-red-500 dark:text-red-400 mb-1">Pago ao Motoboy (R$)</label>
+                    <div className="relative">
+                        <Bike size={16} className="absolute left-3 top-3 text-red-500" />
+                        <input type="number" step="0.01" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white font-bold text-lg focus:border-red-500 outline-none" value={driverFee} onChange={e => setDriverFee(e.target.value)} placeholder="0.00" />
                     </div>
                 </div>
             </div>
-
-            <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-300 dark:border-slate-700 overflow-hidden">
-                <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                    <label className="block text-sm font-bold text-slate-800 dark:text-white mb-2">Selecione o Cliente</label>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">VALOR ESPERA (R$)</label>
                     <div className="relative">
-                        <div className="absolute left-3 top-3 text-slate-500 dark:text-slate-400">
-                            <User size={18} />
-                        </div>
-                        <select
-                            required
-                            className="w-full pl-10 p-3 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none bg-white dark:bg-slate-700 text-lg font-semibold text-slate-900 dark:text-white shadow-sm"
-                            value={selectedClientId}
-                            onChange={e => setSelectedClientId(e.target.value)}
-                        >
-                            <option value="" disabled>Escolha uma empresa...</option>
-                            {clients.map(client => (
-                                <option key={client.id} value={client.id}>{client.name}</option>
-                            ))}
-                        </select>
+                        <Timer size={14} className="absolute left-3 top-3 text-slate-500" />
+                        <input type="number" step="0.01" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" value={waitingTime} onChange={e => setWaitingTime(e.target.value)} placeholder="0.00" />
                     </div>
+                    <p className="text-[10px] text-slate-500 mt-1">Soma no total do sistema</p>
                 </div>
-
-                <div className="p-6 space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="flex gap-4">
-                            <div className="flex-1">
-                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Data</label>
-                                <div className="relative">
-                                    <div className="absolute left-3 top-2.5 text-slate-500 dark:text-slate-400">
-                                        <Calendar size={18} />
-                                    </div>
-                                    <input
-                                        required
-                                        type="date"
-                                        className="w-full pl-10 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium"
-                                        value={serviceDate}
-                                        onChange={e => setServiceDate(e.target.value)}
-                                    />
-                                </div>
-                            </div>
-                            <div className="w-1/3">
-                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Nº Pedido</label>
-                                <div className="relative">
-                                    <div className="absolute left-3 top-2.5 text-slate-500 dark:text-slate-400">
-                                        <Hash size={18} />
-                                    </div>
-                                    <input
-                                        type="text"
-                                        className="w-full pl-10 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium uppercase"
-                                        value={manualOrderId}
-                                        onChange={e => setManualOrderId(e.target.value)}
-                                        placeholder="Ex: 1234"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Solicitado Por</label>
-                            <input
-                                required
-                                className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 font-medium"
-                                value={requester}
-                                onChange={e => setRequester(e.target.value)}
-                                placeholder="Nome do funcionário"
-                            />
-                        </div>
+                <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">TAXA EXTRA (R$)</label>
+                    <div className="relative">
+                        <DollarSign size={14} className="absolute left-3 top-3 text-slate-500" />
+                        <input type="number" step="0.01" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" value={extraFee} onChange={e => setExtraFee(e.target.value)} placeholder="0.00" />
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800/30">
-                            <h3 className="font-bold text-blue-800 dark:text-blue-400 flex items-center gap-2 mb-2">
-                                <div className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400"></div>
-                                Coleta
-                            </h3>
-                            {pickupAddresses.map((addr, idx) => (
-                                <div key={`pickup-${idx}`} className="flex gap-2">
-                                    <div className="relative flex-1">
-                                        <div className="absolute left-3 top-2.5 text-blue-500 dark:text-blue-400">
-                                            <MapPin size={16} />
-                                        </div>
-                                        <input
-                                            required
-                                            className="w-full pl-9 p-2 border border-blue-200 dark:border-blue-800/50 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium placeholder-slate-400"
-                                            value={addr}
-                                            onChange={e => handleAddressChange('pickup', idx, e.target.value)}
-                                            placeholder="Endereço de retirada"
-                                        />
-                                    </div>
-                                    {pickupAddresses.length > 1 && (
-                                        <button type="button" onClick={() => handleRemoveAddress('pickup', idx)} className="p-2 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg">
-                                            <X size={18} />
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
-                            <button type="button" onClick={() => handleAddAddress('pickup')} className="text-sm text-blue-700 dark:text-blue-400 font-bold hover:underline flex items-center gap-1 mt-2">
-                                <Plus size={14} /> Adicionar Parada
-                            </button>
-                        </div>
-
-                        <div className="space-y-3 p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-200 dark:border-emerald-800/30">
-                            <h3 className="font-bold text-emerald-800 dark:text-emerald-400 flex items-center gap-2 mb-2">
-                                <div className="w-2 h-2 rounded-full bg-emerald-600 dark:bg-emerald-400"></div>
-                                Entrega
-                            </h3>
-                            {deliveryAddresses.map((addr, idx) => (
-                                <div key={`delivery-${idx}`} className="flex gap-2">
-                                    <div className="relative flex-1">
-                                        <div className="absolute left-3 top-2.5 text-emerald-500 dark:text-emerald-400">
-                                            <MapPin size={16} />
-                                        </div>
-                                        <input
-                                            required
-                                            className="w-full pl-9 p-2 border border-emerald-200 dark:border-emerald-800/50 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium placeholder-slate-400"
-                                            value={addr}
-                                            onChange={e => handleAddressChange('delivery', idx, e.target.value)}
-                                            placeholder="Endereço de destino"
-                                        />
-                                    </div>
-                                    {deliveryAddresses.length > 1 && (
-                                        <button type="button" onClick={() => handleRemoveAddress('delivery', idx)} className="p-2 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg">
-                                            <X size={18} />
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
-                            <button type="button" onClick={() => handleAddAddress('delivery')} className="text-sm text-emerald-700 dark:text-emerald-400 font-bold hover:underline flex items-center gap-1 mt-2">
-                                <Plus size={14} /> Adicionar Parada
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
-                        <h3 className="font-bold text-slate-800 dark:text-white mb-4">Financeiro e Adicionais</h3>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-bold text-emerald-700 dark:text-emerald-400 mb-1">Valor da Corrida (R$)</label>
-                                <div className="relative">
-                                    <div className="absolute left-3 top-2.5 text-emerald-600 dark:text-emerald-400">
-                                        <DollarSign size={18} />
-                                    </div>
-                                    <input
-                                        required
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        className="w-full pl-10 p-2 border border-emerald-300 dark:border-emerald-600 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-lg font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 placeholder-slate-400"
-                                        value={cost}
-                                        onChange={e => setCost(e.target.value)}
-                                        placeholder="0.00"
-                                    />
-                                </div>
-                            </div>
-                            
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-bold text-red-700 dark:text-red-400 mb-1">Pago ao Motoboy (R$)</label>
-                                <div className="relative">
-                                    <div className="absolute left-3 top-2.5 text-red-600 dark:text-red-400">
-                                        <Bike size={18} />
-                                    </div>
-                                    <input
-                                        required
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        className="w-full pl-10 p-2 border border-red-300 dark:border-red-600 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-lg font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-700 placeholder-slate-400"
-                                        value={driverFee}
-                                        onChange={e => setDriverFee(e.target.value)}
-                                        placeholder="0.00"
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Valor Espera (R$)</label>
-                                <div className="relative">
-                                    <div className="absolute left-3 top-2.5 text-slate-400">
-                                        <Timer size={16} />
-                                    </div>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        className="w-full pl-9 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
-                                        value={waitingTime}
-                                        onChange={e => setWaitingTime(e.target.value)}
-                                        placeholder="0.00"
-                                    />
-                                </div>
-                                <p className="text-[10px] text-slate-400 mt-1">Soma no total do sistema</p>
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">Taxa Extra (R$)</label>
-                                <div className="relative">
-                                    <div className="absolute left-3 top-2.5 text-slate-400">
-                                        <DollarSign size={16} />
-                                    </div>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        className="w-full pl-9 p-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
-                                        value={extraFee}
-                                        onChange={e => setExtraFee(e.target.value)}
-                                        placeholder="0.00"
-                                    />
-                                </div>
-                                <p className="text-[10px] text-slate-400 mt-1">Soma apenas no PDF do Cliente</p>
-                            </div>
-                        </div>
-
-                        <div className="mt-4 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg flex justify-between items-center border border-slate-200 dark:border-slate-600">
-                            <div>
-                                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total Interno (Base + Espera)</span>
-                                <p className="text-lg font-bold text-slate-800 dark:text-white">R$ {currentTotal.toFixed(2)}</p>
-                            </div>
-                            <div className="text-right opacity-75">
-                                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total no PDF (+ Taxa)</span>
-                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">R$ {pdfTotal.toFixed(2)}</p>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                            <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border border-slate-200 dark:border-slate-600">
-                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Forma de Pagamento</label>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {(['PIX', 'CASH', 'CARD'] as PaymentMethod[]).map(method => (
-                                        <button
-                                            key={method}
-                                            type="button"
-                                            onClick={() => setPaymentMethod(method)}
-                                            className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all font-bold ${paymentMethod === method
-                                                ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-600 dark:border-blue-500 text-blue-800 dark:text-blue-400'
-                                                : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 hover:border-slate-400'
-                                                }`}
-                                        >
-                                            {method === 'PIX' && 'Pix'}
-                                            {method === 'CASH' && 'Dinheiro'}
-                                            {method === 'CARD' && 'Cartão'}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="flex items-center justify-center bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg border border-slate-200 dark:border-slate-600">
-                                <label className="flex items-center gap-3 cursor-pointer group select-none">
-                                    <div className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-all ${paid ? 'bg-emerald-500 border-emerald-500 shadow-emerald-200 shadow-md' : 'border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-800'}`}>
-                                        {paid && <CheckCircle size={20} className="text-white" />}
-                                    </div>
-                                    <input
-                                        type="checkbox"
-                                        className="hidden"
-                                        checked={paid}
-                                        onChange={e => setPaid(e.target.checked)}
-                                    />
-                                    <div className="flex flex-col">
-                                        <span className={`font-bold ${paid ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-300'}`}>Status do Pagamento</span>
-                                        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{paid ? 'O serviço já foi pago' : 'Aguardando pagamento'}</span>
-                                    </div>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">Soma apenas no PDF do Cliente</p>
                 </div>
+            </div>
 
-                <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
-                    <button type="button" onClick={onCancel} className="px-6 py-3 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors">
-                        Cancelar
-                    </button>
-                    <button type="submit" className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 transition-all transform active:scale-95 flex items-center gap-2">
-                        <CheckCircle size={20} />
-                        Registrar Corrida
-                    </button>
+            {/* BOX TOTAIS */}
+            <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-lg flex justify-between items-center border border-slate-200 dark:border-slate-700">
+                <div>
+                    <span className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">TOTAL INTERNO (BASE + ESPERA)</span>
+                    <span className="text-xl font-bold text-slate-900 dark:text-white">R$ {currentTotal.toFixed(2)}</span>
                 </div>
-            </form>
+                <div className="text-right">
+                    <span className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">TOTAL NO PDF (+ TAXA)</span>
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">R$ {pdfTotal.toFixed(2)}</span>
+                </div>
+            </div>
         </div>
-    );
+
+        {/* Pagamento */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-3 border border-slate-200 dark:border-slate-600 rounded-xl">
+                <div className="grid grid-cols-3 gap-2">
+                    {(['PIX', 'CASH', 'CARD'] as PaymentMethod[]).map(m => (
+                        <button key={m} type="button" onClick={() => setPaymentMethod(m)} className={`flex items-center justify-center py-2 rounded-lg border text-xs font-bold ${paymentMethod === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-transparent border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:border-slate-400'}`}>{m}</button>
+                    ))}
+                </div>
+            </div>
+            <div className="p-4 border border-slate-200 dark:border-slate-600 rounded-xl flex items-center justify-center">
+                <label className="flex items-center gap-3 cursor-pointer">
+                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-all ${paid ? 'bg-emerald-500 border-emerald-500' : 'border-slate-400'}`}>
+                        {paid && <CheckCircle size={14} className="text-white" />}
+                    </div>
+                    <input type="checkbox" className="hidden" checked={paid} onChange={e => setPaid(e.target.checked)} />
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Status: {paid ? 'PAGO' : 'PENDENTE'}</span>
+                </label>
+            </div>
+        </div>
+
+        <div className="flex justify-end pt-4">
+            <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg transition-colors flex items-center gap-2">
+                <CheckCircle size={20} />
+                Registrar Corrida
+            </button>
+        </div>
+      </form>
+    </div>
+  );
 };
