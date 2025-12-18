@@ -1,7 +1,14 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Client, ServiceRecord, PaymentMethod, User, ServiceLog } from '../types';
 import { saveService, updateService, getServicesByClient, bulkUpdateServices, deleteService, restoreService, getServiceLogs } from '../services/storageService';
-import { ArrowLeft, Plus, Calendar, MapPin, Filter, FileSpreadsheet, X, Bike, ChevronDown, FileText, ShieldCheck, Pencil, DollarSign, CheckCircle, AlertCircle, PieChart, List, CheckSquare, Square, MoreHorizontal, User as UserIcon, Building, MinusSquare, Share2, Phone, Mail, Banknote, QrCode, CreditCard, MessageCircle, Loader2, Download, Table, FileDown, Package, Clock, XCircle, Activity, Trash2, AlertTriangle, FileCheck, Timer, Hash, Copy, RotateCcw, Archive, History } from 'lucide-react';
+import { 
+    ArrowLeft, Plus, Calendar, MapPin, Filter, FileSpreadsheet, X, Bike, ChevronDown, 
+    FileText, ShieldCheck, Pencil, DollarSign, CheckCircle, AlertCircle, PieChart, List, 
+    CheckSquare, Square, MoreHorizontal, User as UserIcon, Building, MinusSquare, Share2, 
+    Phone, Mail, Banknote, QrCode, CreditCard, MessageCircle, Loader2, Download, Table, 
+    FileDown, Package, Clock, XCircle, Activity, Trash2, AlertTriangle, FileCheck, Timer, 
+    Hash, Copy, RotateCcw, Archive, History 
+} from 'lucide-react';
 // @ts-ignore
 import { jsPDF } from 'jspdf';
 // @ts-ignore
@@ -103,7 +110,7 @@ const ServiceHistoryModal = ({ service, onClose }: { service: ServiceRecord; onC
                                                 <div key={field} className="flex gap-2">
                                                     <span className="font-semibold text-slate-600 dark:text-slate-300">{field}:</span>
                                                     <span className="text-red-500 line-through">{formatChangeValue(vals.old)}</span>
-                                                    <span className="text-slate-400">→</span>
+                                                    <span className="text-slate-400">&rarr;</span>
                                                     <span className="text-emerald-600 font-bold">{formatChangeValue(vals.new)}</span>
                                                 </div>
                                             )
@@ -437,7 +444,10 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                         <div key={i} className="relative">
                                             <input className="w-full p-2 bg-slate-800 rounded pr-32" value={addr} onChange={e=>handleAddressChange('pickup', i, e.target.value)} placeholder="Endereço" />
                                             {client.address && (
-                                                <button type="button" onClick={() => handleAddressChange('pickup', i, client.address||'')} className="absolute right-2 top-1.5 text-xs bg-blue-600 px-2 py-1 rounded">Endereço Cliente</button>
+                                                <button type="button" onClick={() => handleAddressChange('pickup', i, client.address||'')} className="absolute right-2 top-1.5 text-xs bg-blue-600 px-2 py-1 rounded flex items-center gap-1" title="Usar endereço do cadastro">
+                                                    <Building size={12} />
+                                                    Endereço Cliente
+                                                </button>
                                             )}
                                         </div>
                                     ))}
@@ -449,7 +459,10 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
                                         <div key={i} className="relative">
                                             <input className="w-full p-2 bg-slate-800 rounded pr-32" value={addr} onChange={e=>handleAddressChange('delivery', i, e.target.value)} placeholder="Endereço" />
                                             {client.address && (
-                                                <button type="button" onClick={() => handleAddressChange('delivery', i, client.address||'')} className="absolute right-2 top-1.5 text-xs bg-emerald-600 px-2 py-1 rounded">Endereço Cliente</button>
+                                                <button type="button" onClick={() => handleAddressChange('delivery', i, client.address||'')} className="absolute right-2 top-1.5 text-xs bg-emerald-600 px-2 py-1 rounded flex items-center gap-1" title="Usar endereço do cadastro">
+                                                    <Building size={12} />
+                                                    Endereço Cliente
+                                                </button>
                                             )}
                                         </div>
                                     ))}
