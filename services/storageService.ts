@@ -47,14 +47,13 @@ const saveList = <T>(key: string, list: T[]) => {
   localStorage.setItem(key, JSON.stringify(list));
 };
 
-// --- LOGGING SYSTEM (Forçado no StorageService) ---
+// --- LOGGING SYSTEM ---
 const getUserName = () => {
     const user = getCurrentUser();
     return user ? user.name : 'Sistema';
 };
 
 const createLog = (serviceId: string, action: 'CRIACAO' | 'EDICAO' | 'EXCLUSAO' | 'RESTAURACAO', changes: any = {}) => {
-    // Busca logs existentes direto do LocalStorage para garantir
     const logs = getList<ServiceLog>(STORAGE_KEYS.LOGS);
     
     const newLog: ServiceLog = {
@@ -81,28 +80,24 @@ export const getCurrentUser = (): User | null => {
   return data ? JSON.parse(data) : null;
 };
 
-// --- NOVA FUNÇÃO DE SINCRONIZAÇÃO ---
+// Sincroniza sessão com a nuvem
 export const refreshUserSession = async (): Promise<User | null> => {
   const currentSession = getCurrentUser();
   if (!currentSession) return null;
 
   try {
-    // Busca todos os utilizadores do banco (Cloud) para encontrar a versão mais recente
     const users = await dbAdapter.getUsers();
     const freshUser = users.find(u => u.id === currentSession.id);
 
     if (freshUser) {
-      // Atualiza o LocalStorage com os dados frescos da nuvem
       localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(freshUser));
       return freshUser;
     }
   } catch (error) {
     console.error("Erro ao atualizar sessão do utilizador:", error);
   }
-  // Se falhar, retorna o que já temos
   return currentSession;
 };
-// ------------------------------------
 
 export const initializeData = async () => {
   try {
@@ -131,8 +126,24 @@ export const updateUserProfile = async (user: User) => {
   }
 };
 
-export const requestPasswordReset = async (email: string) => { return { success: true, code: '123456' }; };
-export const completePasswordReset = async (email: string, code: string, newPass: string) => { return { success: true }; };
+// --- PASSWORD RESET (MODO REAL) ---
+
+export const requestPasswordReset = async (email: string) => {
+    // Se o adapter tiver a função real (Supabase/Firebase), usa ela
+    if (dbAdapter.requestPasswordReset) {
+        return await dbAdapter.requestPasswordReset(email);
+    }
+    // Fallback para LocalStorage (Modo Simulação apenas se não houver nuvem)
+    return { success: true, code: '123456' }; 
+};
+
+export const completePasswordReset = async (email: string, code: string, newPass: string) => { 
+    if (dbAdapter.completePasswordReset) {
+        return await dbAdapter.completePasswordReset(email, code, newPass);
+    }
+    // Fallback Local
+    return { success: true }; 
+};
 
 export const registerUser = async (userData: Partial<User>): Promise<{ success: boolean, user?: User, message?: string }> => {
   const users = await dbAdapter.getUsers();
@@ -189,7 +200,7 @@ export const restoreClient = async (id: string) => {
     }
 };
 
-// --- Services (COM LOGS DE VERDADE AGORA) ---
+// --- Services ---
 
 export const getServices = async (start?: string, end?: string): Promise<ServiceRecord[]> => {
   const user = getCurrentUser();
@@ -208,7 +219,6 @@ export const saveService = async (service: ServiceRecord) => {
   if (user) {
     service.ownerId = user.id;
     await dbAdapter.saveService(service, user);
-    // GERA LOG DE CRIAÇÃO
     createLog(service.id, 'CRIACAO', { info: 'Serviço criado inicialmente' });
   }
 };
@@ -216,14 +226,12 @@ export const saveService = async (service: ServiceRecord) => {
 export const updateService = async (updatedService: ServiceRecord) => {
   const user = getCurrentUser();
   if (user) {
-      // 1. Buscar serviço antigo para comparar
       const allServices = await dbAdapter.getServices(user.id);
       const oldService = allServices.find(s => s.id === updatedService.id);
 
       if (oldService) {
           const changes: any = {};
           
-          // Comparação manual dos campos importantes
           if (oldService.cost !== updatedService.cost) changes['Valor'] = { old: oldService.cost, new: updatedService.cost };
           if (oldService.driverFee !== updatedService.driverFee) changes['Motoboy'] = { old: oldService.driverFee, new: updatedService.driverFee };
           if (oldService.waitingTime !== updatedService.waitingTime) changes['Espera'] = { old: oldService.waitingTime || 0, new: updatedService.waitingTime || 0 };
@@ -237,13 +245,11 @@ export const updateService = async (updatedService: ServiceRecord) => {
               changes['Entrega'] = { old: oldService.deliveryAddresses.join(', '), new: updatedService.deliveryAddresses.join(', ') };
           }
 
-          // Se houver mudanças, cria o log
           if (Object.keys(changes).length > 0) {
               createLog(updatedService.id, 'EDICAO', changes);
           }
       }
 
-      // 2. Salva no banco
       await dbAdapter.updateService(updatedService, user);
   }
 };
@@ -251,9 +257,7 @@ export const updateService = async (updatedService: ServiceRecord) => {
 export const bulkUpdateServices = async (updates: ServiceRecord[]) => {
   const user = getCurrentUser();
   if(user) {
-      // Para bulk update, vamos simplificar e logar apenas a mudança de status se aplicável
       const allServices = await dbAdapter.getServices(user.id);
-      
       for (const updated of updates) {
         const oldService = allServices.find(s => s.id === updated.id);
         if (oldService && oldService.paid !== updated.paid) {
@@ -271,43 +275,31 @@ export const deleteService = async (id: string) => {
   if (service && user) {
       service.deletedAt = new Date().toISOString();
       await dbAdapter.updateService(service, user);
-      // GERA LOG DE EXCLUSÃO
       createLog(id, 'EXCLUSAO');
   }
 };
 
 export const restoreService = async (id: string) => {
     const user = getCurrentUser();
-    
-    // Tenta buscar tudo do LocalStorage primeiro para performance ou do adapter se possível
     const allServicesData = localStorage.getItem(STORAGE_KEYS.SERVICES);
     const allServices: ServiceRecord[] = allServicesData ? JSON.parse(allServicesData) : [];
     
     const serviceIndex = allServices.findIndex(s => s.id === id);
-    
     if (serviceIndex >= 0) {
         const service = allServices[serviceIndex];
         service.deletedAt = undefined;
-        // Salva via adapter para manter consistência
         await dbAdapter.updateService(service, user!); 
-        // GERA LOG DE RESTAURAÇÃO
         createLog(id, 'RESTAURACAO');
     }
 };
 
-// --- LOGS (Leitura) ---
 export const getServiceLogs = async (serviceId: string): Promise<ServiceLog[]> => {
-    // Tenta pegar do adapter primeiro (se for supabase/firebase)
     if (dbAdapter.getServiceLogs) {
         const adapterLogs = await dbAdapter.getServiceLogs(serviceId);
         if(adapterLogs.length > 0) return adapterLogs;
     }
-    
-    // Fallback para LocalStorage local
     const logs = getList<ServiceLog>(STORAGE_KEYS.LOGS);
-    return logs
-        .filter(l => l.serviceId === serviceId)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return logs.filter(l => l.serviceId === serviceId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
 // --- Expenses ---
