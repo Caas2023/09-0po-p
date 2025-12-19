@@ -48,7 +48,7 @@ const getLocalDateStr = (d: Date) => {
     return `${year}-${month}-${day}`;
 };
 
-// --- MODAL DE HISTÓRICO (O RELOGINHO) ---
+// --- MODAL DE HISTÓRICO ---
 const ServiceHistoryModal = ({ service, onClose }: { service: ServiceRecord; onClose: () => void }) => {
     const [logs, setLogs] = useState<ServiceLog[]>([]);
     const [loading, setLoading] = useState(true);
@@ -127,7 +127,7 @@ const ServiceHistoryModal = ({ service, onClose }: { service: ServiceRecord; onC
     );
 };
 
-// --- MODAL DE DOCUMENTO (PDF) ---
+// --- MODAL DE DOCUMENTO ---
 export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: { service: ServiceRecord; client: Client; currentUser: User; onClose: () => void }) => {
     const invoiceRef = useRef<HTMLDivElement>(null);
     const [isSharing, setIsSharing] = useState(false);
@@ -380,10 +380,9 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         revenueByMethod: filteredServices.reduce((a, c) => { const m = c.paymentMethod||'PIX'; a[m]=(a[m]||0)+c.cost+(c.waitingTime||0); return a; }, {} as any)
     }), [filteredServices]);
 
-    // Export Placeholders
-    const handleExportBoleto = () => { /* Mesma lógica do PDF */ };
-    const downloadCSV = () => { /* Mesma lógica do CSV */ };
-    const exportExcel = (t: string) => { /* Mesma lógica */ };
+    const handleExportBoleto = () => { /* Placeholder */ };
+    const downloadCSV = () => { /* Placeholder */ };
+    const exportExcel = (t: string) => { /* Placeholder */ };
 
     const isAllSelected = filteredServices.length > 0 && selectedIds.size === filteredServices.length;
     const isSomeSelected = selectedIds.size > 0 && selectedIds.size < filteredServices.length;
@@ -406,14 +405,21 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
 
             {viewingService && <ServiceDocumentModal service={viewingService} client={client} currentUser={currentUser} onClose={() => setViewingService(null)} />}
             
-            {/* MODAL DE HISTÓRICO - AGORA PRESENTE */}
+            {/* MODAL DE HISTÓRICO */}
             {viewingHistoryService && <ServiceHistoryModal service={viewingHistoryService} onClose={() => setViewingHistoryService(null)} />}
 
             {/* Header */}
             <div className="flex justify-between items-center">
                 <button onClick={onBack} className="flex items-center gap-2"><ArrowLeft /> Voltar</button>
                 {currentUser.role === 'ADMIN' && (
-                    <button onClick={() => setShowTrash(!showTrash)} className={`px-3 py-1 rounded border ${showTrash ? 'bg-red-100 text-red-600' : 'bg-white'}`}>
+                    <button 
+                        onClick={() => setShowTrash(!showTrash)} 
+                        className={`px-3 py-1 rounded border transition-colors ${
+                            showTrash 
+                            ? 'bg-red-100 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800' 
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 dark:hover:bg-slate-700'
+                        }`}
+                    >
                         {showTrash ? 'Ver Ativos' : 'Ver Lixeira'}
                     </button>
                 )}
