@@ -34,7 +34,8 @@ const STORAGE_KEYS = {
   EXPENSES: 'logitrack_expenses',
   USERS: 'logitrack_users',
   SESSION: 'logitrack_session',
-  DB_CONNECTIONS: 'logitrack_db_connections'
+  DB_CONNECTIONS: 'logitrack_db_connections',
+  LOGS: 'logitrack_logs' // Chave garantida para logs
 };
 
 const getList = <T>(key: string): T[] => {
@@ -44,6 +45,29 @@ const getList = <T>(key: string): T[] => {
 
 const saveList = <T>(key: string, list: T[]) => {
   localStorage.setItem(key, JSON.stringify(list));
+};
+
+// --- LOGGING SYSTEM (Forçado no StorageService) ---
+const getUserName = () => {
+    const user = getCurrentUser();
+    return user ? user.name : 'Sistema';
+};
+
+const createLog = (serviceId: string, action: 'CRIACAO' | 'EDICAO' | 'EXCLUSAO' | 'RESTAURACAO', changes: any = {}) => {
+    // Busca logs existentes direto do LocalStorage para garantir
+    const logs = getList<ServiceLog>(STORAGE_KEYS.LOGS);
+    
+    const newLog: ServiceLog = {
+        id: crypto.randomUUID(),
+        serviceId,
+        userName: getUserName(),
+        action,
+        changes,
+        createdAt: new Date().toISOString()
+    };
+
+    logs.push(newLog);
+    saveList(STORAGE_KEYS.LOGS, logs);
 };
 
 // --- User / Auth ---
@@ -142,7 +166,7 @@ export const restoreClient = async (id: string) => {
     }
 };
 
-// --- Services (LOGIC UPGRADED FOR LOGS) ---
+// --- Services (COM LOGS DE VERDADE AGORA) ---
 
 export const getServices = async (start?: string, end?: string): Promise<ServiceRecord[]> => {
   const user = getCurrentUser();
@@ -160,61 +184,111 @@ export const saveService = async (service: ServiceRecord) => {
   const user = getCurrentUser();
   if (user) {
     service.ownerId = user.id;
-    // Passamos o usuário para o adaptador registrar o log
     await dbAdapter.saveService(service, user);
+    // GERA LOG DE CRIAÇÃO
+    createLog(service.id, 'CRIACAO', { info: 'Serviço criado inicialmente' });
   }
 };
 
-export const updateService = async (service: ServiceRecord) => {
+export const updateService = async (updatedService: ServiceRecord) => {
   const user = getCurrentUser();
   if (user) {
-      await dbAdapter.updateService(service, user);
+      // 1. Buscar serviço antigo para comparar
+      const allServices = await dbAdapter.getServices(user.id);
+      const oldService = allServices.find(s => s.id === updatedService.id);
+
+      if (oldService) {
+          const changes: any = {};
+          
+          // Comparação manual dos campos importantes
+          if (oldService.cost !== updatedService.cost) changes['Valor'] = { old: oldService.cost, new: updatedService.cost };
+          if (oldService.driverFee !== updatedService.driverFee) changes['Motoboy'] = { old: oldService.driverFee, new: updatedService.driverFee };
+          if (oldService.waitingTime !== updatedService.waitingTime) changes['Espera'] = { old: oldService.waitingTime || 0, new: updatedService.waitingTime || 0 };
+          if (oldService.extraFee !== updatedService.extraFee) changes['Taxa Extra'] = { old: oldService.extraFee || 0, new: updatedService.extraFee || 0 };
+          if (oldService.paid !== updatedService.paid) changes['Pagamento'] = { old: oldService.paid ? 'Pago' : 'Pendente', new: updatedService.paid ? 'Pago' : 'Pendente' };
+          
+          if (JSON.stringify(oldService.pickupAddresses) !== JSON.stringify(updatedService.pickupAddresses)) {
+              changes['Coleta'] = { old: oldService.pickupAddresses.join(', '), new: updatedService.pickupAddresses.join(', ') };
+          }
+          if (JSON.stringify(oldService.deliveryAddresses) !== JSON.stringify(updatedService.deliveryAddresses)) {
+              changes['Entrega'] = { old: oldService.deliveryAddresses.join(', '), new: updatedService.deliveryAddresses.join(', ') };
+          }
+
+          // Se houver mudanças, cria o log
+          if (Object.keys(changes).length > 0) {
+              createLog(updatedService.id, 'EDICAO', changes);
+          }
+      }
+
+      // 2. Salva no banco
+      await dbAdapter.updateService(updatedService, user);
   }
 };
 
 export const bulkUpdateServices = async (updates: ServiceRecord[]) => {
   const user = getCurrentUser();
   if(user) {
-      for (const s of updates) {
-        await dbAdapter.updateService(s, user);
+      // Para bulk update, vamos simplificar e logar apenas a mudança de status se aplicável
+      const allServices = await dbAdapter.getServices(user.id);
+      
+      for (const updated of updates) {
+        const oldService = allServices.find(s => s.id === updated.id);
+        if (oldService && oldService.paid !== updated.paid) {
+             createLog(updated.id, 'EDICAO', { 'Pagamento': { old: oldService.paid, new: updated.paid } });
+        }
+        await dbAdapter.updateService(updated, user);
       }
   }
 };
 
 export const deleteService = async (id: string) => {
   const user = getCurrentUser();
-  // Busca o serviço para marcar deletedAt
   const services = await dbAdapter.getServices(user?.id || '', undefined, undefined); 
   const service = services.find(s => s.id === id);
   if (service && user) {
       service.deletedAt = new Date().toISOString();
-      await dbAdapter.updateService(service, user); // Adapter vai gerar log de EXCLUSAO
+      await dbAdapter.updateService(service, user);
+      // GERA LOG DE EXCLUSÃO
+      createLog(id, 'EXCLUSAO');
   }
 };
 
 export const restoreService = async (id: string) => {
     const user = getCurrentUser();
-    // Para restaurar, precisamos buscar inclusive os deletados. 
-    // O getServices padrão pode filtrar, mas o adapter direto retorna tudo se não tiver filtro.
-    // Vamos simplificar assumindo que o ClientDetails tem o objeto em memória ou buscamos direto.
-    // Aqui faremos um "update" cego passando deletedAt null se não tivermos o objeto.
-    // Mas o ideal é ter o objeto.
-    // Vamos fazer a busca manual no adapter se necessário, mas aqui vamos simular:
-    const services = await dbAdapter.getServices(user?.id || ''); 
-    const service = services.find(s => s.id === id);
+    // Precisamos buscar inclusive os deletados. O adaptador padrão pode filtrar,
+    // então aqui garantimos buscar do LocalStorage direto se o adapter falhar, 
+    // ou usamos a lógica de update direto.
+    // Assumindo que o front passa o ID correto:
     
-    if (service && user) {
+    // Vamos tentar buscar tudo
+    const allServicesData = localStorage.getItem(STORAGE_KEYS.SERVICES);
+    const allServices: ServiceRecord[] = allServicesData ? JSON.parse(allServicesData) : [];
+    
+    const serviceIndex = allServices.findIndex(s => s.id === id);
+    
+    if (serviceIndex >= 0) {
+        const service = allServices[serviceIndex];
         service.deletedAt = undefined;
-        await dbAdapter.updateService(service, user); // Adapter vai gerar log de RESTAURACAO
+        // Salva via adapter para manter consistência
+        await dbAdapter.updateService(service, user!); 
+        // GERA LOG DE RESTAURAÇÃO
+        createLog(id, 'RESTAURACAO');
     }
 };
 
-// --- LOGS ---
+// --- LOGS (Leitura) ---
 export const getServiceLogs = async (serviceId: string): Promise<ServiceLog[]> => {
+    // Tenta pegar do adapter primeiro (se for supabase/firebase)
     if (dbAdapter.getServiceLogs) {
-        return await dbAdapter.getServiceLogs(serviceId);
+        const adapterLogs = await dbAdapter.getServiceLogs(serviceId);
+        if(adapterLogs.length > 0) return adapterLogs;
     }
-    return [];
+    
+    // Fallback para LocalStorage local
+    const logs = getList<ServiceLog>(STORAGE_KEYS.LOGS);
+    return logs
+        .filter(l => l.serviceId === serviceId)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
 // --- Expenses ---
