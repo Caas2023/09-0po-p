@@ -105,17 +105,17 @@ const ServiceHistoryModal = ({ service, onClose }: { service: ServiceRecord; onC
                                 
                                 {log.changes && Object.keys(log.changes).length > 0 && (
                                     <div className="bg-slate-50 dark:bg-slate-700/50 p-2 rounded text-xs space-y-1">
-                                            {Object.entries(log.changes).map(([field, vals]: any) => (
-                                                field !== 'info' && (
-                                                    <div key={field} className="flex gap-2">
-                                                        <span className="font-semibold text-slate-600 dark:text-slate-300">{field}:</span>
-                                                        <span className="text-red-500 line-through">{formatChangeValue(vals.old)}</span>
-                                                        <span className="text-slate-400">&rarr;</span>
-                                                        <span className="text-emerald-600 font-bold">{formatChangeValue(vals.new)}</span>
-                                                    </div>
-                                                )
-                                            ))}
-                                            {log.changes.info && <div className="italic text-slate-500">{log.changes.info}</div>}
+                                        {Object.entries(log.changes).map(([field, vals]: any) => (
+                                            field !== 'info' && (
+                                                <div key={field} className="flex gap-2">
+                                                    <span className="font-semibold text-slate-600 dark:text-slate-300">{field}:</span>
+                                                    <span className="text-red-500 line-through">{formatChangeValue(vals.old)}</span>
+                                                    <span className="text-slate-400">&rarr;</span>
+                                                    <span className="text-emerald-600 font-bold">{formatChangeValue(vals.new)}</span>
+                                                </div>
+                                            )
+                                        ))}
+                                        {log.changes.info && <div className="italic text-slate-500">{log.changes.info}</div>}
                                     </div>
                                 )}
                             </div>
@@ -626,31 +626,6 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
 
                 {/* Tabela de Serviços */}
                 <div className="overflow-x-auto">
-                    {/* --- AQUI ESTÁ A BARRA DE AÇÕES PARA ITENS SELECIONADOS --- */}
-                    {selectedIds.size > 0 && (
-                        <div className="bg-blue-50 dark:bg-blue-900/40 p-3 border-b border-blue-100 dark:border-blue-800 flex justify-between items-center animate-fade-in">
-                            <span className="text-sm font-bold text-blue-800 dark:text-blue-200 flex items-center gap-2">
-                                <CheckSquare size={16} />
-                                {selectedIds.size} selecionado(s)
-                            </span>
-                            <div className="flex gap-2">
-                                <button 
-                                    onClick={() => handleBulkStatusChange(true)} 
-                                    className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors flex items-center gap-1 shadow-sm"
-                                >
-                                    <CheckCircle size={14} /> Marcar Pago
-                                </button>
-                                <button 
-                                    onClick={() => handleBulkStatusChange(false)} 
-                                    className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-bold hover:bg-amber-600 transition-colors flex items-center gap-1 shadow-sm"
-                                >
-                                    <AlertCircle size={14} /> Marcar Pendente
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                    {/* --- FIM DA BARRA --- */}
-
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
                             <tr>
