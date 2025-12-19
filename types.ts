@@ -23,9 +23,10 @@ export interface Client {
   category: string;
   createdAt: string;
   address?: string;
-  contactPerson?: string;
+  contactPerson?: string; // Responsável Principal
+  requesters?: string[];  // <--- NOVA LISTA DE SOLICITANTES ADICIONAIS
   cnpj?: string;
-  deletedAt?: string;
+  deletedAt?: string; // Soft Delete
 }
 
 export type PaymentMethod = 'PIX' | 'CASH' | 'CARD';
@@ -49,16 +50,16 @@ export interface ServiceRecord {
   manualOrderId?: string; 
   waitingTime?: number;
   extraFee?: number;
-  deletedAt?: string;
+  deletedAt?: string; // Soft Delete
 }
 
-// --- NOVO: Interface do Log de Auditoria ---
+// --- NOVO: Interface para o Log de Auditoria ---
 export interface ServiceLog {
   id: string;
   serviceId: string;
   userName: string;
   action: 'CRIACAO' | 'EDICAO' | 'EXCLUSAO' | 'RESTAURACAO';
-  changes: Record<string, { old: any, new: any }>;
+  changes: Record<string, { old: any, new: any }>; // Armazena o "De -> Para"
   createdAt: string;
 }
 
