@@ -1,256 +1,244 @@
-import { Client, ServiceRecord, ExpenseRecord, User, DatabaseConnection, ServiceLog } from '../types';
-import { DatabaseAdapter } from './database/types';
-import { LocalStorageAdapter } from './database/LocalStorageAdapter';
-import { SupabaseAdapter } from './database/SupabaseAdapter';
-import { FirebaseAdapter } from './database/FirebaseAdapter';
+import { User, Client, ServiceRecord, ExpenseRecord, ServiceLog } from '../types';
 
-// --- Configuration ---
-const DB_PROVIDER = import.meta.env.VITE_DB_PROVIDER || 'LOCAL';
-let dbAdapter: DatabaseAdapter;
+const USERS_KEY = 'logitrack_users';
+const CLIENTS_KEY = 'logitrack_clients';
+const SERVICES_KEY = 'logitrack_services';
+const EXPENSES_KEY = 'logitrack_expenses';
+const LOGS_KEY = 'logitrack_logs'; // Nova chave para os logs
+const SESSION_KEY = 'logitrack_session';
 
-switch (DB_PROVIDER) {
-  case 'SUPABASE':
-    dbAdapter = new SupabaseAdapter(
-      import.meta.env.VITE_SUPABASE_URL || '',
-      import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-    );
-    break;
-  case 'FIREBASE':
-    dbAdapter = new FirebaseAdapter({
-      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID
-    });
-    break;
-  default:
-    dbAdapter = new LocalStorageAdapter();
-}
-
-dbAdapter.initialize();
-
-const STORAGE_KEYS = {
-  CLIENTS: 'logitrack_clients',
-  SERVICES: 'logitrack_services',
-  EXPENSES: 'logitrack_expenses',
-  USERS: 'logitrack_users',
-  SESSION: 'logitrack_session',
-  DB_CONNECTIONS: 'logitrack_db_connections'
+// --- HELPERS ---
+const getSessionUser = (): User | null => {
+  const session = localStorage.getItem(SESSION_KEY);
+  return session ? JSON.parse(session) : null;
 };
 
-const getList = <T>(key: string): T[] => {
-  const data = localStorage.getItem(key);
-  return data ? JSON.parse(data) : [];
+const getUserName = () => {
+    const user = getSessionUser();
+    return user ? user.name : 'Sistema';
 };
 
-const saveList = <T>(key: string, list: T[]) => {
-  localStorage.setItem(key, JSON.stringify(list));
+// --- LOGGING SYSTEM ---
+const createLog = (serviceId: string, action: 'CRIACAO' | 'EDICAO' | 'EXCLUSAO' | 'RESTAURACAO', changes: any = {}) => {
+    const logs = JSON.parse(localStorage.getItem(LOGS_KEY) || '[]');
+    
+    const newLog: ServiceLog = {
+        id: crypto.randomUUID(),
+        serviceId,
+        userName: getUserName(),
+        action,
+        changes,
+        createdAt: new Date().toISOString()
+    };
+
+    logs.push(newLog);
+    localStorage.setItem(LOGS_KEY, JSON.stringify(logs));
 };
 
-// --- User / Auth ---
+export const getServiceLogs = async (serviceId: string): Promise<ServiceLog[]> => {
+    const logs = JSON.parse(localStorage.getItem(LOGS_KEY) || '[]');
+    // Retorna os logs deste serviço, do mais recente para o mais antigo
+    return logs
+        .filter((l: ServiceLog) => l.serviceId === serviceId)
+        .sort((a: ServiceLog, b: ServiceLog) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+};
 
+// --- USERS ---
 export const getUsers = async (): Promise<User[]> => {
-  return await dbAdapter.getUsers();
+  return JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+};
+
+export const saveUser = async (user: User): Promise<void> => {
+  const users = await getUsers();
+  const existingIndex = users.findIndex(u => u.id === user.id);
+  
+  if (existingIndex >= 0) {
+    users[existingIndex] = user;
+  } else {
+    users.push(user);
+  }
+  
+  localStorage.setItem(USERS_KEY, JSON.stringify(users));
 };
 
 export const getCurrentUser = (): User | null => {
-  const data = localStorage.getItem(STORAGE_KEYS.SESSION);
-  return data ? JSON.parse(data) : null;
+  return getSessionUser();
 };
 
-export const initializeData = async () => {
-  try {
-    const users = await dbAdapter.getUsers();
-    if (users.length === 0) {
-      const admin: User = {
-        id: 'admin-1',
-        name: 'Administrador',
-        email: 'admin@logitrack.com',
-        password: 'admin',
-        phone: '(00) 00000-0000',
-        role: 'ADMIN',
-        status: 'ACTIVE'
-      };
-      await dbAdapter.saveUser(admin);
-      saveList(STORAGE_KEYS.USERS, [admin]);
-    }
-  } catch (e) { console.error(e); }
+export const logoutUser = () => {
+  localStorage.removeItem(SESSION_KEY);
 };
 
-export const updateUserProfile = async (user: User) => {
-  await dbAdapter.updateUser(user);
-  const current = getCurrentUser();
-  if (current && current.id === user.id) {
-    localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(user));
-  }
-};
-
-export const requestPasswordReset = async (email: string) => { return { success: true, code: '123456' }; };
-export const completePasswordReset = async (email: string, code: string, newPass: string) => { return { success: true }; };
-
-export const registerUser = async (userData: Partial<User>): Promise<{ success: boolean, user?: User, message?: string }> => {
-  const users = await dbAdapter.getUsers();
-  if (users.find(u => u.email === userData.email)) return { success: false, message: 'Email já cadastrado.' };
-  const newUser: User = { id: crypto.randomUUID(), name: userData.name || '', email: userData.email || '', password: userData.password || '', phone: userData.phone || '', role: 'USER', status: 'ACTIVE' };
-  await dbAdapter.saveUser(newUser);
-  localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(newUser));
-  return { success: true, user: newUser };
-};
-
-export const loginUser = async (email: string, pass: string): Promise<{ success: boolean, user?: User, message?: string }> => {
-  const users = await dbAdapter.getUsers();
-  const user = users.find(u => u.email === email && u.password === pass);
-  if (user) {
-    if (user.status === 'BLOCKED') return { success: false, message: 'Conta bloqueada.' };
-    localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(user));
-    return { success: true, user };
-  }
-  return { success: false, message: 'Credenciais inválidas.' };
-};
-
-export const logoutUser = () => localStorage.removeItem(STORAGE_KEYS.SESSION);
-export const deleteUser = async (id: string) => await dbAdapter.deleteUser(id);
-
-// --- Clients ---
-
+// --- CLIENTS ---
 export const getClients = async (): Promise<Client[]> => {
-  const user = getCurrentUser();
-  if (!user) return [];
-  return await dbAdapter.getClients(user.id);
+  return JSON.parse(localStorage.getItem(CLIENTS_KEY) || '[]');
 };
 
-export const saveClient = async (client: Client) => {
-  const user = getCurrentUser();
-  if (user && !client.ownerId) client.ownerId = user.id;
-  await dbAdapter.saveClient(client);
-};
-
-export const deleteClient = async (id: string) => {
+export const saveClient = async (client: Client): Promise<void> => {
   const clients = await getClients();
-  const client = clients.find(c => c.id === id);
-  if (client) {
-      client.deletedAt = new Date().toISOString();
-      await dbAdapter.saveClient(client); 
+  const index = clients.findIndex(c => c.id === client.id);
+  
+  if (index >= 0) {
+    clients[index] = client;
+  } else {
+    clients.push(client);
   }
+  
+  localStorage.setItem(CLIENTS_KEY, JSON.stringify(clients));
 };
 
-export const restoreClient = async (id: string) => {
+export const deleteClient = async (id: string): Promise<void> => {
     const clients = await getClients();
-    const client = clients.find(c => c.id === id);
-    if (client) {
-        client.deletedAt = undefined;
-        await dbAdapter.saveClient(client);
+    const index = clients.findIndex(c => c.id === id);
+    if (index >= 0) {
+        // Soft delete
+        clients[index].deletedAt = new Date().toISOString();
+        localStorage.setItem(CLIENTS_KEY, JSON.stringify(clients));
     }
 };
 
-// --- Services (LOGIC UPGRADED FOR LOGS) ---
+export const restoreClient = async (id: string): Promise<void> => {
+    const clients = await getClients();
+    const index = clients.findIndex(c => c.id === id);
+    if (index >= 0) {
+        clients[index].deletedAt = undefined;
+        localStorage.setItem(CLIENTS_KEY, JSON.stringify(clients));
+    }
+};
 
-export const getServices = async (start?: string, end?: string): Promise<ServiceRecord[]> => {
-  const user = getCurrentUser();
-  if (!user) return [];
-  return await dbAdapter.getServices(user.id, start, end);
+// --- SERVICES ---
+export const getServices = async (startStr?: string, endStr?: string): Promise<ServiceRecord[]> => {
+  const allServices = JSON.parse(localStorage.getItem(SERVICES_KEY) || '[]');
+  
+  if (!startStr || !endStr) {
+      return allServices;
+  }
+
+  // Se tiver filtro de data, aplica aqui para otimizar o dashboard
+  return allServices.filter((s: ServiceRecord) => {
+      // Pega só a data YYYY-MM-DD
+      const datePart = s.date.includes('T') ? s.date.split('T')[0] : s.date;
+      return datePart >= startStr && datePart <= endStr;
+  });
 };
 
 export const getServicesByClient = async (clientId: string): Promise<ServiceRecord[]> => {
-  const user = getCurrentUser();
-  if (!user) return [];
-  return await dbAdapter.getServices(user.id, undefined, undefined, clientId);
+  const services = await getServices();
+  return services.filter(s => s.clientId === clientId);
 };
 
-export const saveService = async (service: ServiceRecord) => {
-  const user = getCurrentUser();
-  if (user) {
-    service.ownerId = user.id;
-    // Passamos o usuário para o adaptador registrar o log
-    await dbAdapter.saveService(service, user);
-  }
+export const saveService = async (service: ServiceRecord): Promise<void> => {
+  const services = await getServices();
+  services.push(service);
+  localStorage.setItem(SERVICES_KEY, JSON.stringify(services));
+  
+  // GERA LOG DE CRIAÇÃO
+  createLog(service.id, 'CRIACAO', { info: 'Serviço criado inicialmente' });
 };
 
-export const updateService = async (service: ServiceRecord) => {
-  const user = getCurrentUser();
-  if (user) {
-      await dbAdapter.updateService(service, user);
-  }
-};
-
-export const bulkUpdateServices = async (updates: ServiceRecord[]) => {
-  const user = getCurrentUser();
-  if(user) {
-      for (const s of updates) {
-        await dbAdapter.updateService(s, user);
-      }
-  }
-};
-
-export const deleteService = async (id: string) => {
-  const user = getCurrentUser();
-  // Busca o serviço para marcar deletedAt
-  const services = await dbAdapter.getServices(user?.id || '', undefined, undefined); 
-  const service = services.find(s => s.id === id);
-  if (service && user) {
-      service.deletedAt = new Date().toISOString();
-      await dbAdapter.updateService(service, user); // Adapter vai gerar log de EXCLUSAO
-  }
-};
-
-export const restoreService = async (id: string) => {
-    const user = getCurrentUser();
-    // Para restaurar, precisamos buscar inclusive os deletados. 
-    // O getServices padrão pode filtrar, mas o adapter direto retorna tudo se não tiver filtro.
-    // Vamos simplificar assumindo que o ClientDetails tem o objeto em memória ou buscamos direto.
-    // Aqui faremos um "update" cego passando deletedAt null se não tivermos o objeto.
-    // Mas o ideal é ter o objeto.
-    // Vamos fazer a busca manual no adapter se necessário, mas aqui vamos simular:
-    const services = await dbAdapter.getServices(user?.id || ''); 
-    const service = services.find(s => s.id === id);
+export const updateService = async (updatedService: ServiceRecord): Promise<void> => {
+  const services = await getServices();
+  const index = services.findIndex(s => s.id === updatedService.id);
+  
+  if (index >= 0) {
+    const oldService = services[index];
     
-    if (service && user) {
-        service.deletedAt = undefined;
-        await dbAdapter.updateService(service, user); // Adapter vai gerar log de RESTAURACAO
+    // GERA LOG DE EDIÇÃO (COMPARANDO CAMPOS)
+    const changes: any = {};
+    
+    if (oldService.cost !== updatedService.cost) {
+        changes['Valor'] = { old: oldService.cost, new: updatedService.cost };
     }
-};
-
-// --- LOGS ---
-export const getServiceLogs = async (serviceId: string): Promise<ServiceLog[]> => {
-    if (dbAdapter.getServiceLogs) {
-        return await dbAdapter.getServiceLogs(serviceId);
+    if (oldService.driverFee !== updatedService.driverFee) {
+        changes['Motoboy'] = { old: oldService.driverFee, new: updatedService.driverFee };
     }
-    return [];
-};
+    if (oldService.waitingTime !== updatedService.waitingTime) {
+        changes['Espera'] = { old: oldService.waitingTime || 0, new: updatedService.waitingTime || 0 };
+    }
+    if (oldService.extraFee !== updatedService.extraFee) {
+        changes['Taxa Extra'] = { old: oldService.extraFee || 0, new: updatedService.extraFee || 0 };
+    }
+    if (oldService.paid !== updatedService.paid) {
+        changes['Pagamento'] = { old: oldService.paid ? 'Pago' : 'Pendente', new: updatedService.paid ? 'Pago' : 'Pendente' };
+    }
+    if (JSON.stringify(oldService.pickupAddresses) !== JSON.stringify(updatedService.pickupAddresses)) {
+        changes['Coleta'] = { old: oldService.pickupAddresses.join(', '), new: updatedService.pickupAddresses.join(', ') };
+    }
+    if (JSON.stringify(oldService.deliveryAddresses) !== JSON.stringify(updatedService.deliveryAddresses)) {
+        changes['Entrega'] = { old: oldService.deliveryAddresses.join(', '), new: updatedService.deliveryAddresses.join(', ') };
+    }
 
-// --- Expenses ---
+    // Só salva o log se houve alguma mudança real
+    if (Object.keys(changes).length > 0) {
+        createLog(updatedService.id, 'EDICAO', changes);
+    }
 
-export const getExpenses = async (start?: string, end?: string): Promise<ExpenseRecord[]> => {
-  const user = getCurrentUser();
-  if (!user) return [];
-  return await dbAdapter.getExpenses(user.id, start, end);
-};
-
-export const saveExpense = async (expense: ExpenseRecord) => {
-  const user = getCurrentUser();
-  if (user) {
-    expense.ownerId = user.id;
-    await dbAdapter.saveExpense(expense);
+    services[index] = updatedService;
+    localStorage.setItem(SERVICES_KEY, JSON.stringify(services));
   }
 };
 
-export const deleteExpense = async (id: string) => {
-  await dbAdapter.deleteExpense(id);
+export const bulkUpdateServices = async (updates: ServiceRecord[]): Promise<void> => {
+    const services = await getServices();
+    updates.forEach(updated => {
+        const index = services.findIndex(s => s.id === updated.id);
+        if (index >= 0) {
+            // Log simples para update em massa
+            if (services[index].paid !== updated.paid) {
+                createLog(updated.id, 'EDICAO', { 'Pagamento': { old: services[index].paid, new: updated.paid } });
+            }
+            services[index] = updated;
+        }
+    });
+    localStorage.setItem(SERVICES_KEY, JSON.stringify(services));
 };
 
-// --- DB Connections ---
-export const getDatabaseConnections = (): DatabaseConnection[] => getList(STORAGE_KEYS.DB_CONNECTIONS);
-export const saveDatabaseConnection = (conn: DatabaseConnection) => {
-  const list = getList<DatabaseConnection>(STORAGE_KEYS.DB_CONNECTIONS);
-  list.push(conn);
-  saveList(STORAGE_KEYS.DB_CONNECTIONS, list);
+export const deleteService = async (id: string): Promise<void> => {
+    const services = await getServices();
+    const index = services.findIndex(s => s.id === id);
+    if (index >= 0) {
+        services[index].deletedAt = new Date().toISOString();
+        localStorage.setItem(SERVICES_KEY, JSON.stringify(services));
+        
+        // GERA LOG DE EXCLUSÃO
+        createLog(id, 'EXCLUSAO');
+    }
 };
-export const updateDatabaseConnection = (conn: DatabaseConnection) => {
-    const list = getList<DatabaseConnection>(STORAGE_KEYS.DB_CONNECTIONS);
-    const index = list.findIndex(c => c.id === conn.id);
-    if (index !== -1) { list[index] = conn; saveList(STORAGE_KEYS.DB_CONNECTIONS, list); }
+
+export const restoreService = async (id: string): Promise<void> => {
+    const services = await getServices();
+    const index = services.findIndex(s => s.id === id);
+    if (index >= 0) {
+        services[index].deletedAt = undefined;
+        localStorage.setItem(SERVICES_KEY, JSON.stringify(services));
+        
+        // GERA LOG DE RESTAURAÇÃO
+        createLog(id, 'RESTAURACAO');
+    }
 };
-export const deleteDatabaseConnection = (id: string) => {
-    const list = getList<DatabaseConnection>(STORAGE_KEYS.DB_CONNECTIONS);
-    saveList(STORAGE_KEYS.DB_CONNECTIONS, list.filter(c => c.id !== id));
+
+// --- EXPENSES ---
+export const getExpenses = async (startStr?: string, endStr?: string): Promise<ExpenseRecord[]> => {
+  const allExpenses = JSON.parse(localStorage.getItem(EXPENSES_KEY) || '[]');
+  
+  if (!startStr || !endStr) {
+      return allExpenses;
+  }
+
+  return allExpenses.filter((e: ExpenseRecord) => {
+      const datePart = e.date.includes('T') ? e.date.split('T')[0] : e.date;
+      return datePart >= startStr && datePart <= endStr;
+  });
 };
-export const performCloudBackup = async () => {};
+
+export const saveExpense = async (expense: ExpenseRecord): Promise<void> => {
+  const expenses = await getExpenses();
+  expenses.push(expense);
+  localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+};
+
+export const deleteExpense = async (id: string): Promise<void> => {
+    let expenses = await getExpenses();
+    expenses = expenses.filter(e => e.id !== id);
+    localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+};
