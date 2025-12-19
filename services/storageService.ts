@@ -4,7 +4,7 @@ const USERS_KEY = 'logitrack_users';
 const CLIENTS_KEY = 'logitrack_clients';
 const SERVICES_KEY = 'logitrack_services';
 const EXPENSES_KEY = 'logitrack_expenses';
-const LOGS_KEY = 'logitrack_logs'; // Nova chave para os logs
+const LOGS_KEY = 'logitrack_logs';
 const SESSION_KEY = 'logitrack_session';
 
 // --- HELPERS ---
@@ -16,6 +16,51 @@ const getSessionUser = (): User | null => {
 const getUserName = () => {
     const user = getSessionUser();
     return user ? user.name : 'Sistema';
+};
+
+// --- AUTHENTICATION (RESTAURADA) ---
+
+// Função de Registro
+export const registerUser = async (user: User): Promise<void> => {
+  const users = await getUsers();
+  if (users.some(u => u.email === user.email)) {
+    throw new Error("Email já cadastrado.");
+  }
+  users.push(user);
+  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+};
+
+// Função de Login
+export const loginUser = async (email: string, password: string): Promise<User> => {
+  const users = await getUsers();
+  const user = users.find(u => u.email === email && u.password === password);
+  
+  if (!user) {
+    throw new Error("Email ou senha incorretos.");
+  }
+  
+  if (user.status === 'BLOCKED') {
+    throw new Error("Sua conta está bloqueada. Contate o administrador.");
+  }
+
+  // Salva na sessão
+  localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+  return user;
+};
+
+// Simulação de Reset de Senha (apenas placeholder para o frontend não quebrar)
+export const requestPasswordReset = async (email: string): Promise<void> => {
+    // Em um backend real, enviaria email. Aqui só simulamos sucesso se o email existir.
+    const users = await getUsers();
+    const user = users.find(u => u.email === email);
+    if (!user) throw new Error("Email não encontrado.");
+};
+
+export const completePasswordReset = async (password: string): Promise<void> => {
+    // Esta função dependeria de um token em um sistema real.
+    // No LocalStorage, isso é complexo de fazer seguro sem backend.
+    // Deixamos como placeholder para evitar erro de build.
+    return; 
 };
 
 // --- LOGGING SYSTEM ---
@@ -43,7 +88,7 @@ export const getServiceLogs = async (serviceId: string): Promise<ServiceLog[]> =
         .sort((a: ServiceLog, b: ServiceLog) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
-// --- USERS ---
+// --- USERS MANAGEMENT ---
 export const getUsers = async (): Promise<User[]> => {
   return JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
 };
@@ -107,138 +152,4 @@ export const restoreClient = async (id: string): Promise<void> => {
 };
 
 // --- SERVICES ---
-export const getServices = async (startStr?: string, endStr?: string): Promise<ServiceRecord[]> => {
-  const allServices = JSON.parse(localStorage.getItem(SERVICES_KEY) || '[]');
-  
-  if (!startStr || !endStr) {
-      return allServices;
-  }
-
-  // Se tiver filtro de data, aplica aqui para otimizar o dashboard
-  return allServices.filter((s: ServiceRecord) => {
-      // Pega só a data YYYY-MM-DD
-      const datePart = s.date.includes('T') ? s.date.split('T')[0] : s.date;
-      return datePart >= startStr && datePart <= endStr;
-  });
-};
-
-export const getServicesByClient = async (clientId: string): Promise<ServiceRecord[]> => {
-  const services = await getServices();
-  return services.filter(s => s.clientId === clientId);
-};
-
-export const saveService = async (service: ServiceRecord): Promise<void> => {
-  const services = await getServices();
-  services.push(service);
-  localStorage.setItem(SERVICES_KEY, JSON.stringify(services));
-  
-  // GERA LOG DE CRIAÇÃO
-  createLog(service.id, 'CRIACAO', { info: 'Serviço criado inicialmente' });
-};
-
-export const updateService = async (updatedService: ServiceRecord): Promise<void> => {
-  const services = await getServices();
-  const index = services.findIndex(s => s.id === updatedService.id);
-  
-  if (index >= 0) {
-    const oldService = services[index];
-    
-    // GERA LOG DE EDIÇÃO (COMPARANDO CAMPOS)
-    const changes: any = {};
-    
-    if (oldService.cost !== updatedService.cost) {
-        changes['Valor'] = { old: oldService.cost, new: updatedService.cost };
-    }
-    if (oldService.driverFee !== updatedService.driverFee) {
-        changes['Motoboy'] = { old: oldService.driverFee, new: updatedService.driverFee };
-    }
-    if (oldService.waitingTime !== updatedService.waitingTime) {
-        changes['Espera'] = { old: oldService.waitingTime || 0, new: updatedService.waitingTime || 0 };
-    }
-    if (oldService.extraFee !== updatedService.extraFee) {
-        changes['Taxa Extra'] = { old: oldService.extraFee || 0, new: updatedService.extraFee || 0 };
-    }
-    if (oldService.paid !== updatedService.paid) {
-        changes['Pagamento'] = { old: oldService.paid ? 'Pago' : 'Pendente', new: updatedService.paid ? 'Pago' : 'Pendente' };
-    }
-    if (JSON.stringify(oldService.pickupAddresses) !== JSON.stringify(updatedService.pickupAddresses)) {
-        changes['Coleta'] = { old: oldService.pickupAddresses.join(', '), new: updatedService.pickupAddresses.join(', ') };
-    }
-    if (JSON.stringify(oldService.deliveryAddresses) !== JSON.stringify(updatedService.deliveryAddresses)) {
-        changes['Entrega'] = { old: oldService.deliveryAddresses.join(', '), new: updatedService.deliveryAddresses.join(', ') };
-    }
-
-    // Só salva o log se houve alguma mudança real
-    if (Object.keys(changes).length > 0) {
-        createLog(updatedService.id, 'EDICAO', changes);
-    }
-
-    services[index] = updatedService;
-    localStorage.setItem(SERVICES_KEY, JSON.stringify(services));
-  }
-};
-
-export const bulkUpdateServices = async (updates: ServiceRecord[]): Promise<void> => {
-    const services = await getServices();
-    updates.forEach(updated => {
-        const index = services.findIndex(s => s.id === updated.id);
-        if (index >= 0) {
-            // Log simples para update em massa
-            if (services[index].paid !== updated.paid) {
-                createLog(updated.id, 'EDICAO', { 'Pagamento': { old: services[index].paid, new: updated.paid } });
-            }
-            services[index] = updated;
-        }
-    });
-    localStorage.setItem(SERVICES_KEY, JSON.stringify(services));
-};
-
-export const deleteService = async (id: string): Promise<void> => {
-    const services = await getServices();
-    const index = services.findIndex(s => s.id === id);
-    if (index >= 0) {
-        services[index].deletedAt = new Date().toISOString();
-        localStorage.setItem(SERVICES_KEY, JSON.stringify(services));
-        
-        // GERA LOG DE EXCLUSÃO
-        createLog(id, 'EXCLUSAO');
-    }
-};
-
-export const restoreService = async (id: string): Promise<void> => {
-    const services = await getServices();
-    const index = services.findIndex(s => s.id === id);
-    if (index >= 0) {
-        services[index].deletedAt = undefined;
-        localStorage.setItem(SERVICES_KEY, JSON.stringify(services));
-        
-        // GERA LOG DE RESTAURAÇÃO
-        createLog(id, 'RESTAURACAO');
-    }
-};
-
-// --- EXPENSES ---
-export const getExpenses = async (startStr?: string, endStr?: string): Promise<ExpenseRecord[]> => {
-  const allExpenses = JSON.parse(localStorage.getItem(EXPENSES_KEY) || '[]');
-  
-  if (!startStr || !endStr) {
-      return allExpenses;
-  }
-
-  return allExpenses.filter((e: ExpenseRecord) => {
-      const datePart = e.date.includes('T') ? e.date.split('T')[0] : e.date;
-      return datePart >= startStr && datePart <= endStr;
-  });
-};
-
-export const saveExpense = async (expense: ExpenseRecord): Promise<void> => {
-  const expenses = await getExpenses();
-  expenses.push(expense);
-  localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
-};
-
-export const deleteExpense = async (id: string): Promise<void> => {
-    let expenses = await getExpenses();
-    expenses = expenses.filter(e => e.id !== id);
-    localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
-};
+export const getServices = async (startStr?: string, endStr?: string): Promise<ServiceRecord[]>
