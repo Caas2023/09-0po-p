@@ -11,13 +11,12 @@ import {
   LayoutGrid, // Ícone Grade
   List,       // Ícone Lista
   Trash2,     // Ícone Lixeira
-  Archive,    // Ícone Arquivo (Lixeira Vazia/Cheia)
   RotateCcw,  // Ícone Restaurar
-  MoreVertical
+  Building
 } from 'lucide-react';
 import { Client, User as UserType, ServiceRecord } from '../types';
 import { useNavigate } from 'react-router-dom';
-import { saveClient, deleteClient, restoreClient } from '../services/storageService'; // Certifique-se que restoreClient está exportado no storageService
+import { saveClient, deleteClient, restoreClient } from '../services/storageService'; 
 import { toast } from 'sonner';
 
 interface ClientListProps {
@@ -27,7 +26,7 @@ interface ClientListProps {
   onRefresh: () => void;
 }
 
-// --- MÁSCARAS (MANTIDAS) ---
+// --- MÁSCARAS ---
 const formatPhone = (value: string) => {
     const v = value.replace(/\D/g, "");
     return v.replace(/^(\d\d)(\d)/g, "($1) $2").replace(/(\d{5})(\d)/, "$1-$2").slice(0, 15);
@@ -65,7 +64,8 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
       // Filtro de Busca
       return (
         c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.contactPerson?.toLowerCase().includes(searchTerm.toLowerCase())
+        c.contactPerson?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.cnpj?.includes(searchTerm)
       );
     });
   }, [clients, searchTerm, showTrash]);
@@ -81,6 +81,9 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
     e.preventDefault();
     if (!newClient.name) return;
 
+    // Garante que o responsável inicial entra na lista de solicitantes
+    const initialRequesters = newClient.contactPerson ? [newClient.contactPerson] : [];
+
     const clientToSave: Client = {
       id: crypto.randomUUID(),
       ownerId: currentUser.id,
@@ -90,6 +93,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
       category: newClient.category || 'Avulso',
       address: newClient.address || '',
       contactPerson: newClient.contactPerson || '',
+      requesters: initialRequesters, // <--- ADICIONADO AQUI
       cnpj: newClient.cnpj || '',
       createdAt: new Date().toISOString()
     };
@@ -114,8 +118,6 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
   const handleRestore = async (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
       if (confirm("Deseja restaurar este cliente?")) {
-          // Se restoreClient não existir no import, use saveClient mudando deletedAt para null manualmente
-          // Assumindo que você tem a função restoreClient baseada no ClientDetails anterior
           await restoreClient(id); 
           toast.success("Cliente restaurado");
           onRefresh();
@@ -170,11 +172,11 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
         {/* Barra de Busca e Visualização */}
         <div className="flex gap-2">
             <div className="bg-white dark:bg-slate-800 p-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex-1 relative">
-                <Search className="absolute left-5 top-5 text-slate-400" size={20} />
+                <Search className="absolute left-5 top-3.5 text-slate-400" size={20} />
                 <input 
                     type="text" 
                     placeholder="Buscar por nome, empresa ou responsável..." 
-                    className="w-full pl-10 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    className="w-full pl-10 p-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -360,7 +362,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
         </>
       )}
 
-      {/* Modal Novo Cliente (MANTIDO COM MÁSCARAS) */}
+      {/* Modal Novo Cliente */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-xl shadow-2xl p-6 relative animate-slide-up">
@@ -390,7 +392,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Responsável</label>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Responsável Principal</label>
                   <input 
                     className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
                     value={newClient.contactPerson}
