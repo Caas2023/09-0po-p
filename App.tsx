@@ -3,7 +3,15 @@ import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-do
 import { Toaster } from 'sonner';
 import { EyeOff } from 'lucide-react';
 import { User, Client, ServiceRecord, ExpenseRecord } from './types';
-import { initializeData, getClients, getServices, getExpenses, getCurrentUser, logoutUser } from './services/storageService';
+import { 
+  initializeData, 
+  getClients, 
+  getServices, 
+  getExpenses, 
+  getCurrentUser, 
+  logoutUser,
+  refreshUserSession // <--- IMPORTADO
+} from './services/storageService';
 
 // Components
 import { Dashboard } from './components/Dashboard';
@@ -55,20 +63,30 @@ function App() {
     }
   }, []);
 
-  // Refresh data logic
+  // Refresh data logic - AGORA SINCRONIZA A SESSÃO TAMBÉM
   const refreshData = async () => {
     if (currentUser) {
-      // Ensure localStorage matches the "active" user state so data services pick it up
-      localStorage.setItem('logitrack_session', JSON.stringify(currentUser));
+      try {
+        // 1. Atualiza o perfil do utilizador (puxa da nuvem para ter os dados da empresa)
+        const freshUser = await refreshUserSession();
+        
+        // Se houver diferenças (ex: mudou o nome da empresa noutro PC), atualiza o estado
+        if (freshUser && JSON.stringify(freshUser) !== JSON.stringify(currentUser)) {
+            setCurrentUser(freshUser);
+        }
 
-      const c = await getClients();
-      setClients(c);
+        // 2. Busca os outros dados
+        const c = await getClients();
+        setClients(c);
 
-      const s = await getServices();
-      setServices(s);
+        const s = await getServices();
+        setServices(s);
 
-      const e = await getExpenses();
-      setExpenses(e);
+        const e = await getExpenses();
+        setExpenses(e);
+      } catch (error) {
+        console.error("Erro ao sincronizar dados:", error);
+      }
     }
   };
 
@@ -118,7 +136,6 @@ function App() {
     return <ClientDetails currentUser={currentUser!} client={client} onBack={() => navigate('/clients')} />;
   };
 
-  // --- AQUI ESTÁ A CORREÇÃO ---
   // New Order Wrapper to handle Navigation
   const NewOrderWrapper = () => {
     const navigate = useNavigate();
@@ -127,8 +144,6 @@ function App() {
         clients={clients}
         onSave={() => { refreshData(); navigate('/clients'); }}
         onCancel={() => navigate('/')}
-        // Passamos o ID do usuário atual aqui.
-        // O '!' diz ao TypeScript que temos certeza que currentUser existe (pois já passamos pelo check de login)
         currentUserId={currentUser!.id}
       />
     );
