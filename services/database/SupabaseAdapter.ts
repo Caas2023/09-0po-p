@@ -25,7 +25,17 @@ export class SupabaseAdapter implements DatabaseAdapter {
     }
 
     async updateUser(user: User): Promise<void> {
+        // Atualiza tabela users
         await this.supabase.from('users').update(user).eq('id', user.id);
+        
+        // Tenta atualizar a senha no Auth do Supabase também, se possível
+        if (user.password) {
+            try {
+               await this.supabase.auth.updateUser({ password: user.password });
+            } catch (e) {
+                // Ignora erro se não estiver logado como o próprio usuário
+            }
+        }
     }
 
     async deleteUser(id: string): Promise<void> {
@@ -69,7 +79,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
     // --- LOGS HELPER ---
     private async logAction(serviceId: string, action: string, changes: any, user?: User) {
-        if (!user) return; // Se não tiver usuário, não loga (ou loga como Sistema)
+        if (!user) return; 
         
         await this.supabase.from('service_logs').insert({
             service_id: serviceId,
@@ -126,22 +136,15 @@ export class SupabaseAdapter implements DatabaseAdapter {
             deleted_at: service.deletedAt || null
         };
 
-        // Verifica se é criação ou atualização para log
         const { data: existing } = await this.supabase.from('services').select('id').eq('id', service.id).single();
-        
         const { error } = await this.supabase.from('services').upsert(payload);
         
-        if (!error && user) {
-            if (!existing) {
-                await this.logAction(service.id, 'CRIACAO', { info: 'Serviço criado' }, user);
-            }
-            // Se já existisse e caiu aqui, foi tratado pelo updateService geralmente, 
-            // mas como o saveService pode ser usado para ambos, focamos 'CRIACAO' aqui se não existir ID.
+        if (!error && user && !existing) {
+            await this.logAction(service.id, 'CRIACAO', { info: 'Serviço criado' }, user);
         }
     }
 
     async updateService(service: ServiceRecord, user?: User): Promise<void> {
-        // 1. Buscar a versão antiga para comparar
         const { data: oldDataRaw } = await this.supabase.from('services').select('*').eq('id', service.id).single();
         
         const payload = {
@@ -162,7 +165,6 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
         const { error } = await this.supabase.from('services').update(payload).eq('id', service.id);
 
-        // 2. Gerar Log de Diferenças (Diff)
         if (!error && user && oldDataRaw) {
             const oldService: ServiceRecord = {
                 id: oldDataRaw.id,
@@ -185,7 +187,6 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
             const changes: Record<string, { old: any, new: any }> = {};
             
-            // Comparar campos importantes
             if (oldService.cost !== service.cost) changes['Valor'] = { old: oldService.cost, new: service.cost };
             if (oldService.driverFee !== service.driverFee) changes['Pago Motoboy'] = { old: oldService.driverFee, new: service.driverFee };
             if (oldService.requesterName !== service.requesterName) changes['Solicitante'] = { old: oldService.requesterName, new: service.requesterName };
@@ -193,7 +194,6 @@ export class SupabaseAdapter implements DatabaseAdapter {
             if (JSON.stringify(oldService.pickupAddresses) !== JSON.stringify(service.pickupAddresses)) changes['Endereços Retirada'] = { old: 'Alterado', new: 'Alterado' };
             if (JSON.stringify(oldService.deliveryAddresses) !== JSON.stringify(service.deliveryAddresses)) changes['Endereços Entrega'] = { old: 'Alterado', new: 'Alterado' };
             
-            // Se houve mudança no deletedAt (Lixeira)
             if (!oldService.deletedAt && service.deletedAt) {
                 await this.logAction(service.id, 'EXCLUSAO', { info: 'Movido para lixeira' }, user);
                 return;
@@ -203,7 +203,6 @@ export class SupabaseAdapter implements DatabaseAdapter {
                 return;
             }
 
-            // Se houve mudanças normais
             if (Object.keys(changes).length > 0) {
                 await this.logAction(service.id, 'EDICAO', changes, user);
             }
@@ -211,12 +210,9 @@ export class SupabaseAdapter implements DatabaseAdapter {
     }
 
     async deleteService(id: string, user?: User): Promise<void> {
-        // Soft delete é tratado no updateService via deletedAt. 
-        // Esse aqui é o Hard Delete (apagar pra sempre), se usado.
         await this.supabase.from('services').delete().eq('id', id);
     }
 
-    // --- LOGS FETCH ---
     async getServiceLogs(serviceId: string): Promise<ServiceLog[]> {
         const { data, error } = await this.supabase
             .from('service_logs')
@@ -258,5 +254,41 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
     async deleteExpense(id: string): Promise<void> {
         await this.supabase.from('expenses').delete().eq('id', id);
+    }
+
+    // --- PASSWORD RESET (REAL) ---
+    async requestPasswordReset(email: string): Promise<{ success: boolean; message?: string }> {
+        // Envia um código OTP para o email do usuário
+        const { error } = await this.supabase.auth.signInWithOtp({ 
+            email,
+            options: { shouldCreateUser: false } // Não cria conta nova, só permite login existente
+        });
+
+        if (error) return { success: false, message: error.message };
+        return { success: true };
+    }
+
+    async completePasswordReset(email: string, code: string, newPass: string): Promise<{ success: boolean; message?: string }> {
+        // 1. Verifica o código (Token)
+        const { data, error } = await this.supabase.auth.verifyOtp({
+            email,
+            token: code,
+            type: 'email'
+        });
+
+        if (error) return { success: false, message: 'Código inválido ou expirado.' };
+
+        // 2. Se o código for válido, o usuário está logado. Agora atualizamos a senha.
+        if (data.user) {
+            const { error: updateError } = await this.supabase.auth.updateUser({ password: newPass });
+            
+            // Também atualiza nossa tabela pública de usuários para manter sincronia
+            await this.supabase.from('users').update({ password: newPass }).eq('email', email);
+
+            if (updateError) return { success: false, message: updateError.message };
+            return { success: true };
+        }
+
+        return { success: false, message: 'Erro ao validar sessão.' };
     }
 }
