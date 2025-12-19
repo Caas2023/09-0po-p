@@ -1,4 +1,4 @@
-import { User, Client, ServiceRecord, ExpenseRecord, ServiceLog } from '../types';
+import { User, Client, ServiceRecord, ExpenseRecord, ServiceLog, DatabaseConnection } from '../types';
 
 const USERS_KEY = 'logitrack_users';
 const CLIENTS_KEY = 'logitrack_clients';
@@ -6,6 +6,7 @@ const SERVICES_KEY = 'logitrack_services';
 const EXPENSES_KEY = 'logitrack_expenses';
 const LOGS_KEY = 'logitrack_logs';
 const SESSION_KEY = 'logitrack_session';
+const DB_CONNECTIONS_KEY = 'logitrack_db_connections';
 
 // --- HELPERS ---
 const getSessionUser = () => {
@@ -19,7 +20,6 @@ const getUserName = () => {
 };
 
 // --- AUTHENTICATION ---
-
 export const registerUser = async (user: User) => {
   const users = await getUsers();
   if (users.some(u => u.email === user.email)) {
@@ -55,6 +55,14 @@ export const completePasswordReset = async (password: string) => {
     return; 
 };
 
+export const getCurrentUser = () => {
+  return getSessionUser();
+};
+
+export const logoutUser = () => {
+  localStorage.removeItem(SESSION_KEY);
+};
+
 // --- LOGGING SYSTEM ---
 const createLog = (serviceId: string, action: 'CRIACAO' | 'EDICAO' | 'EXCLUSAO' | 'RESTAURACAO', changes: any = {}) => {
     const logs = JSON.parse(localStorage.getItem(LOGS_KEY) || '[]');
@@ -79,7 +87,7 @@ export const getServiceLogs = async (serviceId: string) => {
         .sort((a: ServiceLog, b: ServiceLog) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
-// --- USERS MANAGEMENT ---
+// --- USERS MANAGEMENT (ADMIN) ---
 export const getUsers = async () => {
   return JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
 };
@@ -97,12 +105,38 @@ export const saveUser = async (user: User) => {
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
 };
 
-export const getCurrentUser = () => {
-  return getSessionUser();
+export const updateUserProfile = async (user: User) => {
+    await saveUser(user);
 };
 
-export const logoutUser = () => {
-  localStorage.removeItem(SESSION_KEY);
+export const deleteUser = async (userId: string) => {
+    let users = await getUsers();
+    users = users.filter(u => u.id !== userId);
+    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+};
+
+// --- DATABASE CONNECTIONS (ADMIN) ---
+export const getDatabaseConnections = async () => {
+    return JSON.parse(localStorage.getItem(DB_CONNECTIONS_KEY) || '[]');
+};
+
+export const saveDatabaseConnection = async (conn: DatabaseConnection) => {
+    const conns = await getDatabaseConnections();
+    const index = conns.findIndex(c => c.id === conn.id);
+    
+    if (index >= 0) {
+        conns[index] = conn;
+    } else {
+        conns.push(conn);
+    }
+    
+    localStorage.setItem(DB_CONNECTIONS_KEY, JSON.stringify(conns));
+};
+
+export const deleteDatabaseConnection = async (id: string) => {
+    let conns = await getDatabaseConnections();
+    conns = conns.filter(c => c.id !== id);
+    localStorage.setItem(DB_CONNECTIONS_KEY, JSON.stringify(conns));
 };
 
 // --- CLIENTS ---
@@ -142,7 +176,6 @@ export const restoreClient = async (id: string) => {
 };
 
 // --- SERVICES ---
-// AQUI ESTAVA O ERRO: Removi a tipagem explícita ": Promise<ServiceRecord[]>"
 export const getServices = async (startStr?: string, endStr?: string) => {
   const allServices = JSON.parse(localStorage.getItem(SERVICES_KEY) || '[]');
   
