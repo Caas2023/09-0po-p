@@ -1,7 +1,22 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Client, ServiceRecord, PaymentMethod, User, ServiceLog } from '../types';
-import { saveService, updateService, getServicesByClient, bulkUpdateServices, deleteService, restoreService, getServiceLogs } from '../services/storageService';
-import { ArrowLeft, Plus, Calendar, MapPin, Filter, FileSpreadsheet, X, Bike, ChevronDown, FileText, ShieldCheck, Pencil, DollarSign, CheckCircle, AlertCircle, PieChart, List, CheckSquare, Square, MoreHorizontal, User as UserIcon, Building, MinusSquare, Share2, Phone, Mail, Banknote, QrCode, CreditCard, MessageCircle, Loader2, Download, Table, FileDown, Package, Clock, XCircle, Activity, Trash2, AlertTriangle, FileCheck, Timer, Hash, Copy, RotateCcw, Archive, History } from 'lucide-react';
+import { 
+    saveService, 
+    updateService, 
+    getServicesByClient, 
+    bulkUpdateServices, 
+    deleteService, 
+    restoreService, 
+    getServiceLogs 
+} from '../services/storageService';
+import { 
+    ArrowLeft, Plus, Calendar, MapPin, Filter, FileSpreadsheet, X, Bike, ChevronDown, 
+    FileText, ShieldCheck, Pencil, DollarSign, CheckCircle, AlertCircle, PieChart, List, 
+    CheckSquare, Square, MoreHorizontal, User as UserIcon, Building, MinusSquare, Share2, 
+    Phone, Mail, Banknote, QrCode, CreditCard, MessageCircle, Loader2, Download, Table, 
+    FileDown, Package, Clock, XCircle, Activity, Trash2, AlertTriangle, FileCheck, Timer, 
+    Hash, Copy, RotateCcw, Archive, History 
+} from 'lucide-react';
 // @ts-ignore
 import { jsPDF } from 'jspdf';
 // @ts-ignore
@@ -41,7 +56,7 @@ const getLocalDateStr = (d: Date) => {
     return `${year}-${month}-${day}`;
 };
 
-// --- MODAL DE HISTÓRICO (AUDITORIA) ---
+// --- MODAL DE HISTÓRICO ---
 const ServiceHistoryModal = ({ service, onClose }: { service: ServiceRecord; onClose: () => void }) => {
     const [logs, setLogs] = useState<ServiceLog[]>([]);
     const [loading, setLoading] = useState(true);
@@ -98,17 +113,17 @@ const ServiceHistoryModal = ({ service, onClose }: { service: ServiceRecord; onC
                                 
                                 {log.changes && Object.keys(log.changes).length > 0 && (
                                     <div className="bg-slate-50 dark:bg-slate-700/50 p-2 rounded text-xs space-y-1">
-                                        {Object.entries(log.changes).map(([field, vals]: any) => (
-                                            field !== 'info' && (
-                                                <div key={field} className="flex gap-2">
-                                                    <span className="font-semibold text-slate-600 dark:text-slate-300">{field}:</span>
-                                                    <span className="text-red-500 line-through">{formatChangeValue(vals.old)}</span>
-                                                    <span className="text-slate-400">→</span>
-                                                    <span className="text-emerald-600 font-bold">{formatChangeValue(vals.new)}</span>
-                                                </div>
-                                            )
-                                        ))}
-                                        {log.changes.info && <div className="italic text-slate-500">{log.changes.info}</div>}
+                                            {Object.entries(log.changes).map(([field, vals]: any) => (
+                                                field !== 'info' && (
+                                                    <div key={field} className="flex gap-2">
+                                                        <span className="font-semibold text-slate-600 dark:text-slate-300">{field}:</span>
+                                                        <span className="text-red-500 line-through">{formatChangeValue(vals.old)}</span>
+                                                        <span className="text-slate-400">&rarr;</span>
+                                                        <span className="text-emerald-600 font-bold">{formatChangeValue(vals.new)}</span>
+                                                    </div>
+                                                )
+                                            ))}
+                                            {log.changes.info && <div className="italic text-slate-500">{log.changes.info}</div>}
                                     </div>
                                 )}
                             </div>
@@ -120,7 +135,7 @@ const ServiceHistoryModal = ({ service, onClose }: { service: ServiceRecord; onC
     );
 };
 
-// --- MODAL DE DOCUMENTO (PDF) ---
+// --- MODAL DE DOCUMENTO (RECIBO INDIVIDUAL) ---
 export const ServiceDocumentModal = ({ service, client, currentUser, onClose }: { service: ServiceRecord; client: Client; currentUser: User; onClose: () => void }) => {
     const invoiceRef = useRef<HTMLDivElement>(null);
     const [isSharing, setIsSharing] = useState(false);
@@ -242,7 +257,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     const [cost, setCost] = useState(''); 
     const [driverFee, setDriverFee] = useState(''); 
     const [waitingTime, setWaitingTime] = useState(''); 
-    const [extraFee, setExtraFee] = useState('');       
+    const [extraFee, setExtraFee] = useState('');        
     const [requester, setRequester] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
     const [isPaid, setIsPaid] = useState(false);
@@ -341,7 +356,7 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
     };
 
     // Filters & Helpers
-    const setDateRange = (t: any) => { /* Simplificado para brevidade, lógica mantida */
+    const setDateRange = (t: any) => {
         const now = new Date(); const end = getLocalDateStr(now); let start = end;
         if(t==='week') { const d=new Date(); d.setDate(d.getDate()-d.getDay()); start=getLocalDateStr(d); }
         if(t==='month') { const d=new Date(); d.setDate(1); start=getLocalDateStr(d); }
@@ -373,12 +388,55 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
         revenueByMethod: filteredServices.reduce((a, c) => { const m = c.paymentMethod||'PIX'; a[m]=(a[m]||0)+c.cost+(c.waitingTime||0); return a; }, {} as any)
     }), [filteredServices]);
 
-    // Export Placeholders (Use as lógicas completas anteriores)
-    const handleExportBoleto = () => alert("PDF gerado (simulação)");
-    const downloadCSV = () => alert("CSV gerado (simulação)");
-    const exportExcel = (t: string) => alert("Excel gerado (simulação)");
+    // --- NOVA FUNÇÃO DE EXPORTAR LISTA (PDF) ---
+    const handleExportListPDF = () => {
+        const doc = new jsPDF();
+
+        // 1. Cabeçalho
+        doc.setFontSize(18);
+        doc.setTextColor(40);
+        doc.text(currentUser.companyName || 'Extrato de Serviços', 14, 20);
+
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        const subtitle = `Cliente: ${client.name} | Gerado em: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+        doc.text(subtitle, 14, 28);
+        
+        doc.setDrawColor(200);
+        doc.line(14, 32, 196, 32);
+
+        // 2. Resumo
+        doc.text(`Período: ${startDate ? new Date(startDate).toLocaleDateString() : 'Início'} até ${endDate ? new Date(endDate).toLocaleDateString() : 'Hoje'}`, 14, 40);
+        doc.text(`Total Pago: R$ ${stats.totalPaid.toFixed(2)}`, 14, 46);
+        doc.text(`Total Pendente: R$ ${stats.totalPending.toFixed(2)}`, 14, 52);
+
+        // 3. Tabela
+        const tableColumn = ["Data", "Rota", "Solicitante", "Status", "Valor (R$)"];
+        const tableRows = filteredServices.map(s => {
+            const internalTotal = s.cost + (s.waitingTime || 0);
+            const route = `${s.pickupAddresses[0]?.split(',')[0]} -> ${s.deliveryAddresses[0]?.split(',')[0]}`;
+            return [
+                new Date(s.date).toLocaleDateString(),
+                route.substring(0, 35),
+                s.requesterName,
+                s.paid ? 'PAGO' : 'PENDENTE',
+                internalTotal.toFixed(2)
+            ];
+        });
+
+        autoTable(doc, {
+            head: [tableColumn],
+            body: tableRows,
+            startY: 60,
+            styles: { fontSize: 8 },
+            headStyles: { fillColor: [41, 128, 185] },
+        });
+
+        doc.save(`extrato_${client.name.replace(/\s+/g, '_').toLowerCase()}.pdf`);
+    };
 
     const isAllSelected = filteredServices.length > 0 && selectedIds.size === filteredServices.length;
+    const isSomeSelected = selectedIds.size > 0 && selectedIds.size < filteredServices.length;
     const currentTotal = (parseFloat(cost) || 0) + (parseFloat(waitingTime) || 0);
     const pdfTotal = currentTotal + (parseFloat(extraFee) || 0);
 
@@ -398,118 +456,159 @@ export const ClientDetails: React.FC<ClientDetailsProps> = ({ client, currentUse
 
             {viewingService && <ServiceDocumentModal service={viewingService} client={client} currentUser={currentUser} onClose={() => setViewingService(null)} />}
             
-            {/* MODAL DE HISTÓRICO - AGORA PRESENTE */}
+            {/* MODAL DE HISTÓRICO */}
             {viewingHistoryService && <ServiceHistoryModal service={viewingHistoryService} onClose={() => setViewingHistoryService(null)} />}
 
             {/* Header */}
             <div className="flex justify-between items-center">
                 <button onClick={onBack} className="flex items-center gap-2"><ArrowLeft /> Voltar</button>
                 {currentUser.role === 'ADMIN' && (
-                    <button onClick={() => setShowTrash(!showTrash)} className={`px-3 py-1 rounded border ${showTrash ? 'bg-red-100 text-red-600' : 'bg-white'}`}>
+                    <button 
+                        onClick={() => setShowTrash(!showTrash)} 
+                        className={`px-3 py-1 rounded border transition-colors ${
+                            showTrash 
+                            ? 'bg-red-100 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800' 
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 dark:hover:bg-slate-700'
+                        }`}
+                    >
                         {showTrash ? 'Ver Ativos' : 'Ver Lixeira'}
                     </button>
                 )}
             </div>
 
             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow border border-slate-200 dark:border-slate-700">
-                <h1 className="text-2xl font-bold">{client.name}</h1>
-                <div className="flex gap-4 mt-4 border-b">
-                    <button onClick={() => setActiveTab('services')} className={`pb-2 ${activeTab === 'services' ? 'border-b-2 border-blue-500' : ''}`}>Serviços</button>
-                    <button onClick={() => setActiveTab('financial')} className={`pb-2 ${activeTab === 'financial' ? 'border-b-2 border-emerald-500' : ''}`}>Financeiro</button>
+                <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
+                            {client.name}
+                            {showTrash && <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-md border border-red-200 uppercase">Lixeira</span>}
+                            <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-md border border-slate-300 dark:border-slate-600">
+                                {client.category}
+                            </span>
+                        </h1>
+                        {client.cnpj && (
+                            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1 flex items-center gap-2">
+                                <Building size={14} />
+                                CNPJ: {client.cnpj}
+                            </p>
+                        )}
+                        <div className="flex flex-col gap-2 mt-4 text-slate-600 dark:text-slate-300 text-sm font-medium">
+                            <div className="flex flex-wrap gap-4 md:gap-6">
+                                <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>{client.email}</span>
+                                <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>{client.phone}</span>
+                            </div>
+                            {(client.address || client.contactPerson) && (
+                                <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-700 flex flex-col gap-2">
+                                    {client.contactPerson && (
+                                        <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                                            <UserIcon size={14} className="text-blue-500" />
+                                            <span className="font-bold">Responsável:</span> {client.contactPerson}
+                                        </div>
+                                    )}
+                                    {client.address && (
+                                        <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                                            <MapPin size={14} className="text-emerald-500" />
+                                            <span className="font-bold">Endereço:</span> {client.address}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex gap-6 mt-6 border-b border-slate-200 dark:border-slate-700">
+                    <button
+                        onClick={() => setActiveTab('services')}
+                        className={`pb-3 text-sm font-bold transition-all ${activeTab === 'services'
+                            ? 'text-blue-700 dark:text-blue-400 border-b-2 border-blue-700 dark:border-blue-400'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                            }`}
+                    >
+                        <div className="flex items-center gap-2"><List size={16} /> Serviços & Cadastro</div>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('financial')}
+                        className={`pb-3 text-sm font-bold transition-all ${activeTab === 'financial'
+                            ? 'text-emerald-700 dark:text-emerald-400 border-b-2 border-emerald-700 dark:border-emerald-400'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                            }`}
+                    >
+                        <div className="flex items-center gap-2"><PieChart size={16} /> Relatório Financeiro</div>
+                    </button>
                 </div>
             </div>
 
             {activeTab === 'services' && (
                 <>
-                    <div className="flex justify-end"><button onClick={() => { if(showForm) resetForm(); else setShowForm(true); }} className="bg-blue-600 text-white px-4 py-2 rounded">{showForm ? 'Cancelar' : 'Nova Corrida'}</button></div>
+                    <div className="flex justify-end">
+                        <button
+                            onClick={() => { if(showForm) resetForm(); else setShowForm(true); }}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-bold shadow-sm"
+                        >
+                            {showForm ? <X size={18} /> : <Plus size={18} />}
+                            {showForm ? 'Cancelar' : 'Nova Corrida'}
+                        </button>
+                    </div>
+
                     {showForm && (
-                        <form onSubmit={handleSaveService} className="bg-slate-900 p-6 rounded-xl space-y-4 text-white">
-                            <div className="flex gap-4">
-                                <input value={manualOrderId} onChange={e=>setManualOrderId(e.target.value)} placeholder="Pedido" className="bg-slate-800 p-2 rounded w-32" />
-                                <input type="date" value={serviceDate} onChange={e=>setServiceDate(e.target.value)} className="bg-slate-800 p-2 rounded" />
+                        <form onSubmit={handleSaveService} className="bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-700 space-y-6 animate-slide-down">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-700 pb-4 gap-4">
+                                <h3 className="font-bold text-white text-lg">{editingServiceId ? 'Editar Corrida' : 'Registrar Nova Corrida'}</h3>
+                                
+                                <div className="flex gap-4 w-full sm:w-auto">
+                                    <div className="w-1/2 sm:w-32">
+                                        <label className="text-xs text-slate-400 block mb-1 font-bold">Nº Pedido (Op.)</label>
+                                        <div className="relative">
+                                            <Hash size={14} className="absolute left-2 top-2 text-slate-500" />
+                                            <input type="text" className="w-full pl-7 p-1 bg-slate-800 text-white border border-slate-600 rounded text-sm focus:border-blue-500 outline-none uppercase" value={manualOrderId} onChange={e => setManualOrderId(e.target.value)} placeholder="1234..." />
+                                        </div>
+                                    </div>
+                                    <div className="w-1/2 sm:w-auto text-right">
+                                        <label className="text-xs text-slate-400 block mb-1 font-bold">Data</label>
+                                        <div className="relative"><input type="date" className="p-1 bg-slate-800 text-white border border-slate-600 rounded text-sm" value={serviceDate} onChange={e => setServiceDate(e.target.value)} /></div>
+                                    </div>
+                                </div>
                             </div>
                             
                             {/* ENDEREÇOS COM BOTÃO "ENDEREÇO CLIENTE" */}
                             <div className="grid md:grid-cols-2 gap-4">
-                                <div className="space-y-2 p-3 bg-blue-900/20 rounded border border-blue-800">
-                                    <h3>Coleta</h3>
+                                <div className="space-y-2 p-3 bg-blue-900/10 rounded border border-blue-900/30">
+                                    <h3 className="font-bold text-blue-400 text-sm flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500"></div> Coleta</h3>
                                     {pickupAddresses.map((addr, i) => (
                                         <div key={i} className="relative">
-                                            <input className="w-full p-2 bg-slate-800 rounded pr-32" value={addr} onChange={e=>handleAddressChange('pickup', i, e.target.value)} placeholder="Endereço" />
+                                            <MapPin size={16} className="absolute left-3 top-3 text-blue-500" />
+                                            <input className="w-full pl-9 pr-32 p-2.5 border border-slate-700 rounded-lg bg-slate-800 text-white text-sm focus:border-blue-500 outline-none" value={addr} onChange={e=>handleAddressChange('pickup', i, e.target.value)} placeholder="Endereço" />
                                             {client.address && (
-                                                <button type="button" onClick={() => handleAddressChange('pickup', i, client.address||'')} className="absolute right-2 top-1.5 text-xs bg-blue-600 px-2 py-1 rounded">Endereço Cliente</button>
+                                                <button type="button" onClick={() => handleAddressChange('pickup', i, client.address||'')} className="absolute right-8 top-1.5 text-xs bg-blue-600 px-2 py-1 rounded flex items-center gap-1 text-white border border-blue-400 hover:bg-blue-500" title="Usar endereço do cadastro">
+                                                    <Building size={12} /> Endereço Cliente
+                                                </button>
                                             )}
+                                            {pickupAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('pickup', i)} className="absolute right-2 top-2.5"><X size={16} className="text-red-400" /></button>}
                                         </div>
                                     ))}
-                                    <button type="button" onClick={() => handleAddAddress('pickup')} className="text-xs">+ Add</button>
+                                    <button type="button" onClick={() => handleAddAddress('pickup')} className="text-xs font-bold text-blue-400 flex items-center gap-1 mt-1"><Plus size={14} /> Adicionar Parada</button>
                                 </div>
-                                <div className="space-y-2 p-3 bg-emerald-900/20 rounded border border-emerald-800">
-                                    <h3>Entrega</h3>
+                                <div className="space-y-2 p-3 bg-emerald-900/10 rounded border border-emerald-900/30">
+                                    <h3 className="font-bold text-emerald-400 text-sm flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Entrega</h3>
                                     {deliveryAddresses.map((addr, i) => (
                                         <div key={i} className="relative">
-                                            <input className="w-full p-2 bg-slate-800 rounded pr-32" value={addr} onChange={e=>handleAddressChange('delivery', i, e.target.value)} placeholder="Endereço" />
+                                            <MapPin size={16} className="absolute left-3 top-3 text-emerald-500" />
+                                            <input className="w-full pl-9 pr-32 p-2.5 border border-slate-700 rounded-lg bg-slate-800 text-white text-sm focus:border-emerald-500 outline-none" value={addr} onChange={e=>handleAddressChange('delivery', i, e.target.value)} placeholder="Endereço" />
                                             {client.address && (
-                                                <button type="button" onClick={() => handleAddressChange('delivery', i, client.address||'')} className="absolute right-2 top-1.5 text-xs bg-emerald-600 px-2 py-1 rounded">Endereço Cliente</button>
+                                                <button type="button" onClick={() => handleAddressChange('delivery', i, client.address||'')} className="absolute right-8 top-1.5 text-xs bg-emerald-600 px-2 py-1 rounded flex items-center gap-1 text-white border border-emerald-400 hover:bg-emerald-500" title="Usar endereço do cadastro">
+                                                    <Building size={12} /> Endereço Cliente
+                                                </button>
                                             )}
+                                            {deliveryAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('delivery', i)} className="absolute right-2 top-2.5"><X size={16} className="text-red-400" /></button>}
                                         </div>
                                     ))}
-                                    <button type="button" onClick={() => handleAddAddress('delivery')} className="text-xs">+ Add</button>
+                                    <button type="button" onClick={() => handleAddAddress('delivery')} className="text-xs font-bold text-emerald-400 flex items-center gap-1 mt-1"><Plus size={14} /> Adicionar Parada</button>
                                 </div>
                             </div>
 
-                            <div className="flex gap-4">
-                                <input value={cost} onChange={e=>setCost(e.target.value)} placeholder="Valor R$" className="bg-slate-800 p-2 rounded w-full" />
-                                <input value={driverFee} onChange={e=>setDriverFee(e.target.value)} placeholder="Motoboy R$" className="bg-slate-800 p-2 rounded w-full" />
-                            </div>
-                            <input value={requester} onChange={e=>setRequester(e.target.value)} placeholder="Solicitante" className="bg-slate-800 p-2 rounded w-full" />
-                            
-                            <button type="submit" className="bg-emerald-600 w-full p-2 rounded font-bold">Salvar</button>
-                        </form>
-                    )}
-                </>
-            )}
-
-            {/* Tabela de Serviços */}
-            <div className="bg-white dark:bg-slate-800 rounded shadow overflow-hidden">
-                <div className="p-4 border-b flex gap-2">
-                    <button onClick={()=>setDateRange('today')}>Hoje</button>
-                    <button onClick={()=>setDateRange('month')}>Mês</button>
-                </div>
-                <table className="w-full text-left text-sm">
-                    <thead>
-                        <tr className="bg-slate-100 dark:bg-slate-700">
-                            <th className="p-3">Data</th>
-                            <th className="p-3">Rota</th>
-                            <th className="p-3 text-right">Valor</th>
-                            <th className="p-3 text-center">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredServices.map(s => (
-                            <tr key={s.id} className="border-b hover:bg-slate-50 dark:hover:bg-slate-700">
-                                <td className="p-3">{new Date(s.date).toLocaleDateString()}</td>
-                                <td className="p-3 max-w-xs truncate">{s.pickupAddresses[0]} &rarr; {s.deliveryAddresses[0]}</td>
-                                <td className="p-3 text-right font-bold">R$ {s.cost.toFixed(2)}</td>
-                                <td className="p-3 flex justify-center gap-2">
-                                    {showTrash ? (
-                                        <button onClick={()=>handleRestoreService(s)} className="text-emerald-500"><RotateCcw size={18}/></button>
-                                    ) : (
-                                        <>
-                                            {/* BOTÃO HISTÓRICO RESTAURADO */}
-                                            {currentUser.role === 'ADMIN' && (
-                                                <button onClick={()=>setViewingHistoryService(s)} className="text-purple-500 hover:bg-purple-100 p-1 rounded" title="Histórico"><History size={18}/></button>
-                                            )}
-                                            <button onClick={()=>setViewingService(s)} className="text-blue-500"><FileText size={18}/></button>
-                                            <button onClick={()=>handleEditService(s)} className="text-blue-500"><Pencil size={18}/></button>
-                                            <button onClick={()=>setServiceToDelete(s)} className="text-red-500"><Trash2 size={18}/></button>
-                                        </>
-                                    )}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-};
+                            <div className="pt-4 border-t border-slate-700">
+                                <h3 className="font-bold text-white mb-4 text-sm border-b border-slate-700 pb-2">Financeiro e Adicionais</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                    <div className="relative">
+                                        <DollarSign size={16} className="absolute left-3 top-3
