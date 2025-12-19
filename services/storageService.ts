@@ -81,6 +81,29 @@ export const getCurrentUser = (): User | null => {
   return data ? JSON.parse(data) : null;
 };
 
+// --- NOVA FUNÇÃO DE SINCRONIZAÇÃO ---
+export const refreshUserSession = async (): Promise<User | null> => {
+  const currentSession = getCurrentUser();
+  if (!currentSession) return null;
+
+  try {
+    // Busca todos os utilizadores do banco (Cloud) para encontrar a versão mais recente
+    const users = await dbAdapter.getUsers();
+    const freshUser = users.find(u => u.id === currentSession.id);
+
+    if (freshUser) {
+      // Atualiza o LocalStorage com os dados frescos da nuvem
+      localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(freshUser));
+      return freshUser;
+    }
+  } catch (error) {
+    console.error("Erro ao atualizar sessão do utilizador:", error);
+  }
+  // Se falhar, retorna o que já temos
+  return currentSession;
+};
+// ------------------------------------
+
 export const initializeData = async () => {
   try {
     const users = await dbAdapter.getUsers();
@@ -255,12 +278,8 @@ export const deleteService = async (id: string) => {
 
 export const restoreService = async (id: string) => {
     const user = getCurrentUser();
-    // Precisamos buscar inclusive os deletados. O adaptador padrão pode filtrar,
-    // então aqui garantimos buscar do LocalStorage direto se o adapter falhar, 
-    // ou usamos a lógica de update direto.
-    // Assumindo que o front passa o ID correto:
     
-    // Vamos tentar buscar tudo
+    // Tenta buscar tudo do LocalStorage primeiro para performance ou do adapter se possível
     const allServicesData = localStorage.getItem(STORAGE_KEYS.SERVICES);
     const allServices: ServiceRecord[] = allServicesData ? JSON.parse(allServicesData) : [];
     
