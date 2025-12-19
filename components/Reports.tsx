@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Client, ServiceRecord, PaymentMethod, User } from '../types';
-import { FileSpreadsheet, Building2, FolderOpen, ChevronRight, FileText, PieChart, CreditCard, Banknote, QrCode, AlertCircle, Table, ShieldCheck, FileDown, Loader2 } from 'lucide-react';
+import { FileSpreadsheet, Building2, FolderOpen, ChevronRight, FileText, PieChart, CreditCard, Banknote, QrCode, AlertCircle, Table, ShieldCheck, FileDown, Loader2, Calendar } from 'lucide-react';
 import { ServiceDocumentModal } from './ClientDetails';
 import { getServices, getExpenses, getClients } from '../services/storageService';
 // @ts-ignore
@@ -39,6 +39,9 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
       return getLocalDateStr(lastDay);
   });
   
+  // --- NOVO ESTADO PARA OS BOTÕES DE PERÍODO ---
+  const [activePeriod, setActivePeriod] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('month');
+
   const [selectedClientId, setSelectedClientId] = useState<string>('all');
   const [selectedMonthLabel, setSelectedMonthLabel] = useState<string>('');
   const [viewingService, setViewingService] = useState<ServiceRecord | null>(null);
@@ -74,16 +77,6 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
 
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
-    // Aqui usamos 'services' que já vem filtrado por data, mas para montar o menu lateral
-    // idealmente precisariamos de uma lista de "meses disponiveis" leve.
-    // Como simplificação, vamos assumir que o usuário navega pelo calendário ou
-    // se tivermos os dados carregados, mostramos.
-    // Para manter a lógica antiga funcionando 100%, teríamos que carregar todos os metadados de datas.
-    // Mas para performance, vamos focar no filtro de data atual.
-    
-    // Se quiser manter a lista lateral funcional, ela vai mostrar apenas os meses
-    // que estão no intervalo carregado OU você pode carregar uma lista leve de datas separadamente.
-    // Por enquanto, vamos gerar baseado no que temos:
     services.forEach(s => {
         const dateStr = s.date.includes('T') ? s.date.split('T')[0] : s.date;
         months.add(dateStr.substring(0, 7)); 
@@ -116,7 +109,39 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
       }
   }, []);
 
+  // --- NOVA FUNÇÃO PARA OS BOTÕES DE PERÍODO ---
+  const handlePeriodChange = (period: 'today' | 'week' | 'month' | 'year') => {
+      setActivePeriod(period);
+      const now = new Date();
+      const start = new Date();
+
+      if (period === 'today') {
+          // Início e Fim são hoje
+      } else if (period === 'week') {
+          // Últimos 7 dias
+          start.setDate(now.getDate() - 7);
+      } else if (period === 'month') {
+          // Dia 1 do mês atual
+          start.setDate(1);
+      } else if (period === 'year') {
+          // Dia 1 de Janeiro
+          start.setMonth(0, 1);
+      }
+
+      setStartDate(getLocalDateStr(start));
+      setEndDate(getLocalDateStr(now));
+      
+      // Atualiza o label do topo
+      if (period === 'month') {
+          const label = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+          setSelectedMonthLabel(label.charAt(0).toUpperCase() + label.slice(1));
+      } else {
+          setSelectedMonthLabel(period === 'today' ? 'Hoje' : period === 'week' ? 'Última Semana' : 'Este Ano');
+      }
+  };
+
   const selectMonth = (monthId: string, label: string) => {
+      setActivePeriod('custom'); // Desativa os botões rápidos
       const [year, month] = monthId.split('-').map(Number);
       const firstDay = new Date(year, month - 1, 1);
       const lastDay = new Date(year, month, 0);
@@ -127,13 +152,13 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
   };
 
   const handleCustomDateChange = (type: 'start' | 'end', value: string) => {
+      setActivePeriod('custom'); // Desativa os botões rápidos ao mexer manualmente
       if (type === 'start') setStartDate(value);
       else setEndDate(value);
       setSelectedMonthLabel('Período Personalizado');
   };
 
   const filteredData = useMemo(() => {
-    // 1. FILTRO DE LIXEIRA (O MAIS IMPORTANTE)
     let filtered = services.filter(s => !s.deletedAt);
 
     if (selectedClientId !== 'all') {
@@ -149,7 +174,6 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
         filtered = filtered.filter(s => (s.paymentMethod || 'PIX') === paymentMethodFilter);
     }
 
-    // O filtro de data já foi feito no backend, mas mantemos aqui para garantir consistência visual
     if (startDate && endDate) {
         filtered = filtered.filter(s => {
              const dateStr = s.date.includes('T') ? s.date.split('T')[0] : s.date;
@@ -528,7 +552,7 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
                 <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)}></div>
                 <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-20 overflow-hidden animate-fade-in">
-                     <button 
+                      <button 
                         onClick={handleExportPDF}
                         disabled={isGeneratingPdf}
                         className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex items-center gap-3 border-b border-slate-100 dark:border-slate-700"
@@ -541,7 +565,7 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
                             <p className="text-xs text-slate-500 dark:text-slate-400">Formato profissional para impressão</p>
                         </div>
                     </button>
-                     <button 
+                      <button 
                         onClick={downloadCSV}
                         className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm flex items-center gap-3 border-b border-slate-100 dark:border-slate-700"
                     >
@@ -609,7 +633,7 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
                 
                 {/* Custom Filters */}
                 <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-700 space-y-4">
-                     <div>
+                      <div>
                         <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-2">Filtrar por Cliente</label>
                         <div className="relative">
                             <Building2 size={14} className="absolute left-3 top-3 text-slate-400" />
@@ -624,11 +648,11 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
                                 ))}
                             </select>
                         </div>
-                     </div>
+                      </div>
 
-                     <div>
-                         <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-2">Método de Pagamento</label>
-                         <div className="grid grid-cols-2 gap-2">
+                      <div>
+                          <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-2">Método de Pagamento</label>
+                          <div className="grid grid-cols-2 gap-2">
                              <button
                                 onClick={() => setPaymentMethodFilter('ALL')}
                                 className={`px-2 py-1.5 text-xs rounded-md border font-medium ${paymentMethodFilter === 'ALL' ? 'bg-slate-800 dark:bg-slate-600 text-white border-slate-800 dark:border-slate-600' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'}`}
@@ -653,24 +677,48 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
                              >
                                  <Banknote size={12} />
                              </button>
-                         </div>
-                     </div>
+                          </div>
+                      </div>
 
-                     <div>
-                         <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-2">Outros Filtros</label>
-                         <button 
+                      <div>
+                          <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-2">Outros Filtros</label>
+                          <button 
                             onClick={() => setOnlyWithCnpj(!onlyWithCnpj)}
                             className={`w-full px-3 py-2 text-xs rounded-lg border flex items-center gap-2 transition-all font-medium ${onlyWithCnpj ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300' : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300'}`}
-                         >
-                             <ShieldCheck size={14} className={onlyWithCnpj ? 'text-indigo-600' : 'text-slate-400'} />
-                             Apenas clientes com CNPJ
-                         </button>
-                     </div>
+                          >
+                              <ShieldCheck size={14} className={onlyWithCnpj ? 'text-indigo-600' : 'text-slate-400'} />
+                              Apenas clientes com CNPJ
+                          </button>
+                      </div>
 
-                     <div className="pt-4 border-t border-slate-200 dark:border-slate-600">
-                         <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-2">Período Personalizado</label>
-                         <div className="grid grid-cols-2 gap-2">
-                             <input 
+                      <div className="pt-4 border-t border-slate-200 dark:border-slate-600">
+                          <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-2">Período Personalizado</label>
+                          
+                          {/* --- AQUI ESTÃO OS BOTÕES QUE VOCÊ PEDIU --- */}
+                          <div className="grid grid-cols-2 gap-2 mb-3">
+                              {[
+                                  { id: 'today', label: 'Hoje' },
+                                  { id: 'week', label: 'Semana' },
+                                  { id: 'month', label: 'Este Mês' },
+                                  { id: 'year', label: 'Este Ano' }
+                              ].map(btn => (
+                                  <button
+                                    key={btn.id}
+                                    onClick={() => handlePeriodChange(btn.id as any)}
+                                    className={`px-2 py-1.5 text-xs font-bold rounded-md transition-all ${
+                                        activePeriod === btn.id
+                                        ? 'bg-blue-600 text-white shadow-sm'
+                                        : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600'
+                                    }`}
+                                  >
+                                      {btn.label}
+                                  </button>
+                              ))}
+                          </div>
+                          {/* --- FIM DOS BOTÕES --- */}
+
+                          <div className="grid grid-cols-2 gap-2">
+                              <input 
                                 type="date" 
                                 className="w-full p-2 text-xs border border-slate-200 dark:border-slate-600 rounded-lg outline-none bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                                 value={startDate}
@@ -682,8 +730,8 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
                                 value={endDate}
                                 onChange={(e) => handleCustomDateChange('end', e.target.value)}
                              />
-                         </div>
-                     </div>
+                          </div>
+                      </div>
                 </div>
             </div>
 
