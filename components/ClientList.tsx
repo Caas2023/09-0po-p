@@ -8,11 +8,12 @@ import {
   Briefcase, 
   ChevronRight, 
   X,
-  LayoutGrid, // Ícone Grade
-  List,       // Ícone Lista
-  Trash2,     // Ícone Lixeira
-  RotateCcw,  // Ícone Restaurar
-  Building
+  LayoutGrid, 
+  List,       
+  Trash2,     
+  RotateCcw,  
+  Building,
+  Users
 } from 'lucide-react';
 import { Client, User as UserType, ServiceRecord } from '../types';
 import { useNavigate } from 'react-router-dom';
@@ -46,22 +47,24 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   
-  // ESTADOS RESTAURADOS
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showTrash, setShowTrash] = useState(false);
 
+  // Estado do formulário
   const [newClient, setNewClient] = useState<Partial<Client>>({
     name: '', email: '', phone: '', category: 'Avulso', address: '', contactPerson: '', cnpj: ''
   });
 
+  // Estado para a lista de solicitantes no cadastro
+  const [requestersList, setRequestersList] = useState<string[]>([]);
+  const [tempRequester, setTempRequester] = useState('');
+
   const filteredClients = useMemo(() => {
     return clients.filter(c => {
-      // Filtro de Lixeira
       const isDeleted = !!c.deletedAt;
       if (showTrash && !isDeleted) return false;
       if (!showTrash && isDeleted) return false;
 
-      // Filtro de Busca
       return (
         c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.contactPerson?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -77,12 +80,33 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
       setNewClient({ ...newClient, [field]: formattedValue });
   };
 
+  // Funções para gerir solicitantes no modal
+  const addRequesterToForm = (e?: React.MouseEvent) => {
+      e?.preventDefault(); // Previne submit do form
+      if (tempRequester.trim()) {
+          setRequestersList([...requestersList, tempRequester.trim()]);
+          setTempRequester('');
+      }
+  };
+
+  const removeRequesterFromForm = (index: number) => {
+      setRequestersList(requestersList.filter((_, i) => i !== index));
+  };
+
   const handleSaveClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClient.name) return;
 
-    // Garante que o responsável inicial entra na lista de solicitantes
-    const initialRequesters = newClient.contactPerson ? [newClient.contactPerson] : [];
+    // Se houver texto no input de solicitante que não foi adicionado, adiciona agora
+    let finalRequesters = [...requestersList];
+    if (tempRequester.trim()) {
+        finalRequesters.push(tempRequester.trim());
+    }
+
+    // Se a lista estiver vazia, usa o responsável como padrão
+    if (finalRequesters.length === 0 && newClient.contactPerson) {
+        finalRequesters.push(newClient.contactPerson);
+    }
 
     const clientToSave: Client = {
       id: crypto.randomUUID(),
@@ -93,19 +117,23 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
       category: newClient.category || 'Avulso',
       address: newClient.address || '',
       contactPerson: newClient.contactPerson || '',
-      requesters: initialRequesters, // <--- ADICIONADO AQUI
+      requesters: finalRequesters, // Salva a lista criada
       cnpj: newClient.cnpj || '',
       createdAt: new Date().toISOString()
     };
 
     await saveClient(clientToSave);
-    toast.success('Cliente cadastrado!');
+    toast.success('Cliente cadastrado com sucesso!');
+    
+    // Resetar form
     setShowModal(false);
     setNewClient({ name: '', email: '', phone: '', category: 'Avulso', address: '', contactPerson: '', cnpj: '' });
+    setRequestersList([]);
+    setTempRequester('');
+    
     onRefresh();
   };
 
-  // Funções de Exclusão/Restauração (da lista)
   const handleDelete = async (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
       if (confirm("Tem certeza que deseja mover este cliente para a lixeira?")) {
@@ -140,7 +168,6 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
             </div>
             
             <div className="flex gap-2">
-                {/* Botão Nova Lixeira */}
                 {currentUser.role === 'ADMIN' && (
                     <button 
                         onClick={() => setShowTrash(!showTrash)}
@@ -156,7 +183,6 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
                     </button>
                 )}
 
-                {/* Botão Novo Cliente (só aparece se não estiver na lixeira) */}
                 {!showTrash && (
                     <button 
                         onClick={() => setShowModal(true)}
@@ -169,7 +195,6 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
             </div>
         </div>
 
-        {/* Barra de Busca e Visualização */}
         <div className="flex gap-2">
             <div className="bg-white dark:bg-slate-800 p-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex-1 relative">
                 <Search className="absolute left-5 top-3.5 text-slate-400" size={20} />
@@ -182,7 +207,6 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
                 />
             </div>
             
-            {/* Toggle Grid/List */}
             <div className="bg-white dark:bg-slate-800 p-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex items-center gap-1">
                 <button 
                     onClick={() => setViewMode('grid')}
@@ -212,7 +236,6 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
             </div>
       ) : (
         <>
-            {/* --- VISUALIZAÇÃO EM GRADE --- */}
             {viewMode === 'grid' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {filteredClients.map(client => (
@@ -231,7 +254,6 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
                                     <span className="text-xs font-bold px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full border border-slate-200 dark:border-slate-600">
                                         {client.category}
                                     </span>
-                                    {/* Botão de Restaurar/Excluir no Card */}
                                     {showTrash && currentUser.role === 'ADMIN' && (
                                         <button 
                                             onClick={(e) => handleRestore(e, client.id)}
@@ -287,7 +309,6 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
                 </div>
             )}
 
-            {/* --- VISUALIZAÇÃO EM LISTA --- */}
             {viewMode === 'list' && (
                 <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
                     <table className="w-full text-left text-sm">
@@ -364,8 +385,8 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
 
       {/* Modal Novo Cliente */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-xl shadow-2xl p-6 relative animate-slide-up">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-xl shadow-2xl p-6 relative animate-slide-up my-auto">
             <button 
               onClick={() => setShowModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
@@ -392,12 +413,12 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Responsável Principal</label>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Responsável</label>
                   <input 
                     className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
                     value={newClient.contactPerson}
                     onChange={e => handleInputChange('contactPerson', e.target.value)}
-                    placeholder="Nome do contato"
+                    placeholder="Nome do contato principal"
                   />
                 </div>
                 <div>
@@ -411,6 +432,44 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, services, curre
                   />
                 </div>
               </div>
+
+              {/* --- CAMPO NOVO: SOLICITANTES AUTORIZADOS --- */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
+                      <Users size={12} /> Solicitantes Autorizados (Opcional)
+                  </label>
+                  <div className="flex gap-2 mb-2">
+                      <input 
+                          className="flex-1 p-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 outline-none"
+                          placeholder="Adicionar nome..."
+                          value={tempRequester}
+                          onChange={e => setTempRequester(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && addRequesterToForm(e as any)}
+                      />
+                      <button 
+                          type="button" 
+                          onClick={(e) => addRequesterToForm(e)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors"
+                      >
+                          <Plus size={20} />
+                      </button>
+                  </div>
+                  {/* Lista de Solicitantes */}
+                  <div className="flex flex-wrap gap-2">
+                      {newClient.contactPerson && (
+                          <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded text-xs font-bold border border-blue-200 dark:border-blue-800">
+                              {newClient.contactPerson} (Resp.)
+                          </span>
+                      )}
+                      {requestersList.map((req, index) => (
+                          <span key={index} className="bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-200 px-2 py-1 rounded text-xs font-medium border border-slate-200 dark:border-slate-500 flex items-center gap-1">
+                              {req}
+                              <button type="button" onClick={() => removeRequesterFromForm(index)} className="text-slate-400 hover:text-red-500"><X size={12}/></button>
+                          </span>
+                      ))}
+                  </div>
+              </div>
+              {/* ------------------------------------------- */}
 
               <div>
                   <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">CPF ou CNPJ</label>
