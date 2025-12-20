@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ArrowLeft, MapPin, DollarSign, Bike, Calendar, User, Hash, 
-  CheckCircle, X, Plus, Timer, Building, Loader2 
+  ArrowLeft, 
+  MapPin, 
+  DollarSign, 
+  Bike, 
+  Calendar, 
+  User, 
+  Hash, 
+  CheckCircle, 
+  X,
+  Plus,
+  Timer,
+  Building 
 } from 'lucide-react';
 import { Client, ServiceRecord, PaymentMethod, User as UserType } from '../types';
 import { getClients, saveService } from '../services/storageService';
@@ -18,14 +28,25 @@ const getLocalDateStr = (d: Date) => {
     return `${year}-${month}-${day}`;
 };
 
+// --- MÁSCARA DE MOEDA (UX) ---
 const formatCurrency = (value: string) => {
+    // Remove tudo que não é dígito
     const numericValue = value.replace(/\D/g, '');
+    
+    // Converte para número e divide por 100 para ter os centavos
     const amount = Number(numericValue) / 100;
-    return amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    
+    // Formata para BRL
+    return amount.toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+    });
 };
 
+// --- CONVERTER MOEDA PARA FLOAT (PARA SALVAR) ---
 const parseCurrency = (value: string) => {
     if (!value) return 0;
+    // Remove R$, pontos e substitui vírgula por ponto
     const cleanValue = value.replace(/[R$\s.]/g, '').replace(',', '.');
     return parseFloat(cleanValue) || 0;
 };
@@ -33,7 +54,6 @@ const parseCurrency = (value: string) => {
 export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState('');
-  const [isLoading, setIsLoading] = useState(false); // Trava o botão para não clicar 2x
   
   const selectedClient = clients.find(c => c.id === selectedClientId);
 
@@ -44,6 +64,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
   const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
   const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
   
+  // Estados agora guardam a string formatada (Ex: "R$ 50,00")
   const [cost, setCost] = useState('');
   const [driverFee, setDriverFee] = useState('');
   const [waitingTime, setWaitingTime] = useState('');
@@ -54,12 +75,8 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
 
   useEffect(() => {
     const loadClients = async () => {
-      try {
-        const data = await getClients();
-        setClients(data);
-      } catch (error) {
-        toast.error("Erro ao carregar clientes.");
-      }
+      const data = await getClients();
+      setClients(data);
     };
     loadClients();
   }, []);
@@ -89,14 +106,13 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
     }
   };
 
+  // Handler genérico para aplicar máscara de moeda
   const handleMoneyInput = (value: string, setter: (v: string) => void) => {
       setter(formatCurrency(value));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLoading) return;
-
     if (!selectedClientId) {
       toast.error('Selecione um cliente.');
       return;
@@ -110,52 +126,41 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
       return;
     }
 
-    setIsLoading(true); // Bloqueia o botão
+    const newService: ServiceRecord = {
+      id: crypto.randomUUID(),
+      ownerId: currentUser.id,
+      clientId: selectedClientId,
+      date,
+      manualOrderId,
+      requesterName: requester,
+      pickupAddresses: cleanPickup,
+      deliveryAddresses: cleanDelivery,
+      // Converte as strings formatadas de volta para Float
+      cost: parseCurrency(cost),
+      driverFee: parseCurrency(driverFee),
+      waitingTime: parseCurrency(waitingTime),
+      extraFee: parseCurrency(extraFee),
+      paymentMethod,
+      paid,
+      status: 'PENDING'
+    };
 
-    try {
-        const newService: ServiceRecord = {
-          id: crypto.randomUUID(),
-          ownerId: currentUser.id,
-          clientId: selectedClientId,
-          date,
-          manualOrderId,
-          requesterName: requester,
-          pickupAddresses: cleanPickup,
-          deliveryAddresses: cleanDelivery,
-          cost: parseCurrency(cost),
-          driverFee: parseCurrency(driverFee),
-          waitingTime: parseCurrency(waitingTime),
-          extraFee: parseCurrency(extraFee),
-          paymentMethod,
-          paid,
-          status: 'PENDING'
-        };
-
-        // Tenta salvar. Se o banco recusar, vai dar erro aqui.
-        await saveService(newService);
-        
-        toast.success('Corrida registrada com sucesso!');
-        
-        // Limpa tudo
-        setManualOrderId('');
-        setRequester('');
-        setPickupAddresses(['']);
-        setDeliveryAddresses(['']);
-        setCost('');
-        setDriverFee('');
-        setWaitingTime('');
-        setExtraFee('');
-        setPaid(false);
-
-    } catch (error: any) {
-        console.error("Erro ao salvar:", error);
-        // Mostra o erro real na tela
-        toast.error(`Não salvou: ${error.message || 'Erro desconhecido'}`);
-    } finally {
-        setIsLoading(false); // Libera o botão
-    }
+    await saveService(newService);
+    toast.success('Corrida registrada!');
+    
+    // Reset Form
+    setManualOrderId('');
+    setRequester('');
+    setPickupAddresses(['']);
+    setDeliveryAddresses(['']);
+    setCost('');
+    setDriverFee('');
+    setWaitingTime('');
+    setExtraFee('');
+    setPaid(false);
   };
 
+  // Cálculos visuais (usando o parser para somar corretamente)
   const currentTotal = parseCurrency(cost) + parseCurrency(waitingTime);
   const pdfTotal = currentTotal + parseCurrency(extraFee);
 
@@ -173,6 +178,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
 
       <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 space-y-6">
         
+        {/* Seleção de Cliente */}
         <div>
             <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Selecione o Cliente</label>
             <div className="relative">
@@ -190,52 +196,105 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
             </div>
         </div>
 
+        {/* Dados Gerais */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Data</label>
                 <div className="relative">
                     <Calendar size={16} className="absolute left-3 top-3 text-slate-400" />
-                    <input type="date" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500" value={date} onChange={e => setDate(e.target.value)} />
+                    <input 
+                        type="date" 
+                        className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500" 
+                        value={date} 
+                        onChange={e => setDate(e.target.value)} 
+                    />
                 </div>
             </div>
             <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Nº Pedido</label>
                 <div className="relative">
                     <Hash size={16} className="absolute left-3 top-3 text-slate-400" />
-                    <input type="text" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500 uppercase" placeholder="# EX: 1234" value={manualOrderId} onChange={e => setManualOrderId(e.target.value)} />
+                    <input 
+                        type="text" 
+                        className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500 uppercase" 
+                        placeholder="# EX: 1234"
+                        value={manualOrderId} 
+                        onChange={e => setManualOrderId(e.target.value)} 
+                    />
                 </div>
             </div>
             <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Solicitado Por</label>
-                <input type="text" className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500" placeholder="Nome do funcionário" value={requester} onChange={e => setRequester(e.target.value)} />
+                <input 
+                    type="text" 
+                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500" 
+                    placeholder="Nome do funcionário"
+                    value={requester} 
+                    onChange={e => setRequester(e.target.value)} 
+                />
             </div>
         </div>
 
+        {/* Endereços */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* COLETA */}
             <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-900/30">
                 <h3 className="font-bold text-blue-600 dark:text-blue-400 text-sm flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500"></div> Coleta</h3>
                 {pickupAddresses.map((addr, idx) => (
                     <div key={idx} className="flex gap-2 relative">
                         <MapPin size={16} className="absolute left-3 top-3 text-blue-500" />
-                        <input className="w-full pl-9 pr-36 p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" value={addr} onChange={e => handleAddressChange('pickup', idx, e.target.value)} placeholder="Endereço de retirada" />
+                        <input 
+                            className="w-full pl-9 pr-36 p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" 
+                            value={addr} 
+                            onChange={e => handleAddressChange('pickup', idx, e.target.value)} 
+                            placeholder="Endereço de retirada" 
+                        />
+                        
+                        {/* BOTÃO MÁGICO: COPIAR DO CADASTRO */}
                         {selectedClient?.address && (
-                            <button type="button" onClick={() => handleAddressChange('pickup', idx, selectedClient.address || '')} className="absolute right-8 top-1.5 px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs font-bold rounded-md flex items-center gap-1 transition-colors border border-blue-300" title="Usar endereço do cadastro"><Building size={12} /> Endereço Cliente</button>
+                            <button
+                                type="button"
+                                onClick={() => handleAddressChange('pickup', idx, selectedClient.address || '')}
+                                className="absolute right-8 top-1.5 px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs font-bold rounded-md flex items-center gap-1 transition-colors border border-blue-300"
+                                title="Usar endereço do cadastro"
+                            >
+                                <Building size={12} />
+                                Endereço Cliente
+                            </button>
                         )}
+
                         {pickupAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('pickup', idx)} className="absolute right-2 top-2.5"><X size={16} className="text-red-400" /></button>}
                     </div>
                 ))}
                 <button type="button" onClick={() => handleAddAddress('pickup')} className="text-xs font-bold text-blue-500 flex items-center gap-1 mt-1"><Plus size={14} /> Adicionar Parada</button>
             </div>
 
+            {/* ENTREGA */}
             <div className="space-y-3 p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
                 <h3 className="font-bold text-emerald-600 dark:text-emerald-400 text-sm flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Entrega</h3>
                 {deliveryAddresses.map((addr, idx) => (
                     <div key={idx} className="flex gap-2 relative">
                         <MapPin size={16} className="absolute left-3 top-3 text-emerald-500" />
-                        <input className="w-full pl-9 pr-36 p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:border-emerald-500 outline-none" value={addr} onChange={e => handleAddressChange('delivery', idx, e.target.value)} placeholder="Endereço de destino" />
+                        <input 
+                            className="w-full pl-9 pr-36 p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:border-emerald-500 outline-none" 
+                            value={addr} 
+                            onChange={e => handleAddressChange('delivery', idx, e.target.value)} 
+                            placeholder="Endereço de destino" 
+                        />
+
+                        {/* BOTÃO MÁGICO: COPIAR DO CADASTRO */}
                         {selectedClient?.address && (
-                            <button type="button" onClick={() => handleAddressChange('delivery', idx, selectedClient.address || '')} className="absolute right-8 top-1.5 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-bold rounded-md flex items-center gap-1 transition-colors border border-emerald-300" title="Usar endereço do cadastro"><Building size={12} /> Endereço Cliente</button>
+                            <button
+                                type="button"
+                                onClick={() => handleAddressChange('delivery', idx, selectedClient.address || '')}
+                                className="absolute right-8 top-1.5 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-bold rounded-md flex items-center gap-1 transition-colors border border-emerald-300"
+                                title="Usar endereço do cadastro"
+                            >
+                                <Building size={12} />
+                                Endereço Cliente
+                            </button>
                         )}
+
                         {deliveryAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('delivery', idx)} className="absolute right-2 top-2.5"><X size={16} className="text-red-400" /></button>}
                     </div>
                 ))}
@@ -243,6 +302,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
             </div>
         </div>
 
+        {/* Financeiro (COM MÁSCARAS DE INPUT) */}
         <div>
             <h3 className="font-bold text-slate-800 dark:text-white mb-4 text-sm border-b border-slate-200 dark:border-slate-700 pb-2">Financeiro e Adicionais</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -250,14 +310,26 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
                     <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-1">Valor da Corrida</label>
                     <div className="relative">
                         <DollarSign size={16} className="absolute left-3 top-3 text-emerald-500" />
-                        <input type="text" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white font-bold text-lg focus:border-emerald-500 outline-none" value={cost} onChange={e => handleMoneyInput(e.target.value, setCost)} placeholder="R$ 0,00" />
+                        <input 
+                            type="text" 
+                            className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white font-bold text-lg focus:border-emerald-500 outline-none" 
+                            value={cost} 
+                            onChange={e => handleMoneyInput(e.target.value, setCost)} 
+                            placeholder="R$ 0,00" 
+                        />
                     </div>
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-red-500 dark:text-red-400 mb-1">Pago ao Motoboy</label>
                     <div className="relative">
                         <Bike size={16} className="absolute left-3 top-3 text-red-500" />
-                        <input type="text" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white font-bold text-lg focus:border-red-500 outline-none" value={driverFee} onChange={e => handleMoneyInput(e.target.value, setDriverFee)} placeholder="R$ 0,00" />
+                        <input 
+                            type="text" 
+                            className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white font-bold text-lg focus:border-red-500 outline-none" 
+                            value={driverFee} 
+                            onChange={e => handleMoneyInput(e.target.value, setDriverFee)} 
+                            placeholder="R$ 0,00" 
+                        />
                     </div>
                 </div>
             </div>
@@ -267,7 +339,13 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
                     <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">VALOR ESPERA</label>
                     <div className="relative">
                         <Timer size={14} className="absolute left-3 top-3 text-slate-500" />
-                        <input type="text" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" value={waitingTime} onChange={e => handleMoneyInput(e.target.value, setWaitingTime)} placeholder="R$ 0,00" />
+                        <input 
+                            type="text" 
+                            className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" 
+                            value={waitingTime} 
+                            onChange={e => handleMoneyInput(e.target.value, setWaitingTime)} 
+                            placeholder="R$ 0,00" 
+                        />
                     </div>
                     <p className="text-[10px] text-slate-500 mt-1">Soma no total do sistema</p>
                 </div>
@@ -275,12 +353,19 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
                     <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">TAXA EXTRA</label>
                     <div className="relative">
                         <DollarSign size={14} className="absolute left-3 top-3 text-slate-500" />
-                        <input type="text" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" value={extraFee} onChange={e => handleMoneyInput(e.target.value, setExtraFee)} placeholder="R$ 0,00" />
+                        <input 
+                            type="text" 
+                            className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" 
+                            value={extraFee} 
+                            onChange={e => handleMoneyInput(e.target.value, setExtraFee)} 
+                            placeholder="R$ 0,00" 
+                        />
                     </div>
                     <p className="text-[10px] text-slate-500 mt-1">Soma apenas no PDF do Cliente</p>
                 </div>
             </div>
 
+            {/* BOX TOTAIS */}
             <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-lg flex justify-between items-center border border-slate-200 dark:border-slate-700">
                 <div>
                     <span className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">TOTAL INTERNO (BASE + ESPERA)</span>
@@ -293,6 +378,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
             </div>
         </div>
 
+        {/* Pagamento */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-3 border border-slate-200 dark:border-slate-600 rounded-xl">
                 <div className="grid grid-cols-3 gap-2">
@@ -313,13 +399,9 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
         </div>
 
         <div className="flex justify-end pt-4">
-            <button 
-                type="submit" 
-                disabled={isLoading}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                {isLoading ? <Loader2 size={20} className="animate-spin" /> : <CheckCircle size={20} />}
-                {isLoading ? 'Salvando...' : 'Registrar Corrida'}
+            <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg transition-colors flex items-center gap-2">
+                <CheckCircle size={20} />
+                Registrar Corrida
             </button>
         </div>
       </form>
