@@ -1,17 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ArrowLeft, 
-  MapPin, 
-  DollarSign, 
-  Bike, 
-  Calendar, 
-  User, 
-  Hash, 
-  CheckCircle, 
-  X,
-  Plus,
-  Timer,
-  Building 
+  ArrowLeft, MapPin, DollarSign, Bike, Calendar, User, Hash, 
+  CheckCircle, X, Plus, Timer, Building, Loader2 
 } from 'lucide-react';
 import { Client, ServiceRecord, PaymentMethod, User as UserType } from '../types';
 import { getClients, saveService } from '../services/storageService';
@@ -30,23 +20,14 @@ const getLocalDateStr = (d: Date) => {
 
 // --- MÁSCARA DE MOEDA (UX) ---
 const formatCurrency = (value: string) => {
-    // Remove tudo que não é dígito
     const numericValue = value.replace(/\D/g, '');
-    
-    // Converte para número e divide por 100 para ter os centavos
     const amount = Number(numericValue) / 100;
-    
-    // Formata para BRL
-    return amount.toLocaleString('pt-BR', {
-        style: 'currency',
-        currency: 'BRL'
-    });
+    return amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };
 
 // --- CONVERTER MOEDA PARA FLOAT (PARA SALVAR) ---
 const parseCurrency = (value: string) => {
     if (!value) return 0;
-    // Remove R$, pontos e substitui vírgula por ponto
     const cleanValue = value.replace(/[R$\s.]/g, '').replace(',', '.');
     return parseFloat(cleanValue) || 0;
 };
@@ -54,6 +35,7 @@ const parseCurrency = (value: string) => {
 export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState('');
+  const [isLoading, setIsLoading] = useState(false); // NOVO: Trava o botão enquanto salva
   
   const selectedClient = clients.find(c => c.id === selectedClientId);
 
@@ -64,7 +46,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
   const [pickupAddresses, setPickupAddresses] = useState<string[]>(['']);
   const [deliveryAddresses, setDeliveryAddresses] = useState<string[]>(['']);
   
-  // Estados agora guardam a string formatada (Ex: "R$ 50,00")
   const [cost, setCost] = useState('');
   const [driverFee, setDriverFee] = useState('');
   const [waitingTime, setWaitingTime] = useState('');
@@ -75,8 +56,12 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
 
   useEffect(() => {
     const loadClients = async () => {
-      const data = await getClients();
-      setClients(data);
+      try {
+        const data = await getClients();
+        setClients(data);
+      } catch (error) {
+        toast.error("Erro ao carregar clientes. Verifique sua conexão.");
+      }
     };
     loadClients();
   }, []);
@@ -106,13 +91,14 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
     }
   };
 
-  // Handler genérico para aplicar máscara de moeda
   const handleMoneyInput = (value: string, setter: (v: string) => void) => {
       setter(formatCurrency(value));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return; // Evita clicar duas vezes
+
     if (!selectedClientId) {
       toast.error('Selecione um cliente.');
       return;
@@ -126,41 +112,52 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
       return;
     }
 
-    const newService: ServiceRecord = {
-      id: crypto.randomUUID(),
-      ownerId: currentUser.id,
-      clientId: selectedClientId,
-      date,
-      manualOrderId,
-      requesterName: requester,
-      pickupAddresses: cleanPickup,
-      deliveryAddresses: cleanDelivery,
-      // Converte as strings formatadas de volta para Float
-      cost: parseCurrency(cost),
-      driverFee: parseCurrency(driverFee),
-      waitingTime: parseCurrency(waitingTime),
-      extraFee: parseCurrency(extraFee),
-      paymentMethod,
-      paid,
-      status: 'PENDING'
-    };
+    setIsLoading(true); // Ativa o carregamento
 
-    await saveService(newService);
-    toast.success('Corrida registrada!');
-    
-    // Reset Form
-    setManualOrderId('');
-    setRequester('');
-    setPickupAddresses(['']);
-    setDeliveryAddresses(['']);
-    setCost('');
-    setDriverFee('');
-    setWaitingTime('');
-    setExtraFee('');
-    setPaid(false);
+    try {
+        const newService: ServiceRecord = {
+          id: crypto.randomUUID(),
+          ownerId: currentUser.id,
+          clientId: selectedClientId,
+          date,
+          manualOrderId,
+          requesterName: requester,
+          pickupAddresses: cleanPickup,
+          deliveryAddresses: cleanDelivery,
+          cost: parseCurrency(cost),
+          driverFee: parseCurrency(driverFee),
+          waitingTime: parseCurrency(waitingTime),
+          extraFee: parseCurrency(extraFee),
+          paymentMethod,
+          paid,
+          status: 'PENDING'
+        };
+
+        // Tenta salvar. Se der erro no banco, vai cair no CATCH abaixo.
+        await saveService(newService);
+        
+        toast.success('Corrida registrada com sucesso!');
+        
+        // Limpa o formulário
+        setManualOrderId('');
+        setRequester('');
+        setPickupAddresses(['']);
+        setDeliveryAddresses(['']);
+        setCost('');
+        setDriverFee('');
+        setWaitingTime('');
+        setExtraFee('');
+        setPaid(false);
+
+    } catch (error: any) {
+        console.error("Erro ao salvar:", error);
+        // Mostra o erro real na tela
+        toast.error(`Não foi possível salvar: ${error.message || 'Erro desconhecido'}`);
+    } finally {
+        setIsLoading(false); // Destrava o botão
+    }
   };
 
-  // Cálculos visuais (usando o parser para somar corretamente)
   const currentTotal = parseCurrency(cost) + parseCurrency(waitingTime);
   const pdfTotal = currentTotal + parseCurrency(extraFee);
 
@@ -237,7 +234,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
 
         {/* Endereços */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* COLETA */}
             <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-900/30">
                 <h3 className="font-bold text-blue-600 dark:text-blue-400 text-sm flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500"></div> Coleta</h3>
                 {pickupAddresses.map((addr, idx) => (
@@ -249,8 +245,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
                             onChange={e => handleAddressChange('pickup', idx, e.target.value)} 
                             placeholder="Endereço de retirada" 
                         />
-                        
-                        {/* BOTÃO MÁGICO: COPIAR DO CADASTRO */}
                         {selectedClient?.address && (
                             <button
                                 type="button"
@@ -262,14 +256,12 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
                                 Endereço Cliente
                             </button>
                         )}
-
                         {pickupAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('pickup', idx)} className="absolute right-2 top-2.5"><X size={16} className="text-red-400" /></button>}
                     </div>
                 ))}
                 <button type="button" onClick={() => handleAddAddress('pickup')} className="text-xs font-bold text-blue-500 flex items-center gap-1 mt-1"><Plus size={14} /> Adicionar Parada</button>
             </div>
 
-            {/* ENTREGA */}
             <div className="space-y-3 p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
                 <h3 className="font-bold text-emerald-600 dark:text-emerald-400 text-sm flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Entrega</h3>
                 {deliveryAddresses.map((addr, idx) => (
@@ -281,8 +273,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
                             onChange={e => handleAddressChange('delivery', idx, e.target.value)} 
                             placeholder="Endereço de destino" 
                         />
-
-                        {/* BOTÃO MÁGICO: COPIAR DO CADASTRO */}
                         {selectedClient?.address && (
                             <button
                                 type="button"
@@ -294,7 +284,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
                                 Endereço Cliente
                             </button>
                         )}
-
                         {deliveryAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('delivery', idx)} className="absolute right-2 top-2.5"><X size={16} className="text-red-400" /></button>}
                     </div>
                 ))}
@@ -302,7 +291,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
             </div>
         </div>
 
-        {/* Financeiro (COM MÁSCARAS DE INPUT) */}
+        {/* Financeiro */}
         <div>
             <h3 className="font-bold text-slate-800 dark:text-white mb-4 text-sm border-b border-slate-200 dark:border-slate-700 pb-2">Financeiro e Adicionais</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -365,7 +354,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
                 </div>
             </div>
 
-            {/* BOX TOTAIS */}
             <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-lg flex justify-between items-center border border-slate-200 dark:border-slate-700">
                 <div>
                     <span className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">TOTAL INTERNO (BASE + ESPERA)</span>
@@ -399,9 +387,13 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
         </div>
 
         <div className="flex justify-end pt-4">
-            <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg transition-colors flex items-center gap-2">
-                <CheckCircle size={20} />
-                Registrar Corrida
+            <button 
+                type="submit" 
+                disabled={isLoading}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                {isLoading ? <Loader2 size={20} className="animate-spin" /> : <CheckCircle size={20} />}
+                {isLoading ? 'Salvando...' : 'Registrar Corrida'}
             </button>
         </div>
       </form>
