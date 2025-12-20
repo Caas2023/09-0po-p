@@ -10,12 +10,11 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 let dbAdapter: DatabaseAdapter;
 
-// Lógica Inteligente: Se tem chaves, usa Supabase. Se não, usa Local.
 if (SUPABASE_URL && SUPABASE_KEY) {
-    console.log('✅ Modo Online: Conectado ao Supabase');
+    console.log('✅ Conectado ao Supabase (Nuvem)');
     dbAdapter = new SupabaseAdapter(SUPABASE_URL, SUPABASE_KEY);
 } else {
-    console.warn('⚠️ Modo Offline: Usando LocalStorage (Dados não sincronizam)');
+    console.warn('⚠️ Usando LocalStorage (Offline)');
     dbAdapter = new LocalStorageAdapter();
 }
 
@@ -31,7 +30,6 @@ const STORAGE_KEYS = {
   LOGS: 'logitrack_logs'
 };
 
-// Helpers de LocalStorage (Mantidos para fallback e sessão)
 const getList = <T>(key: string): T[] => {
   const data = localStorage.getItem(key);
   return data ? JSON.parse(data) : [];
@@ -52,7 +50,6 @@ export const getCurrentUser = (): User | null => {
   return data ? JSON.parse(data) : null;
 };
 
-// Mantém a sessão atualizada com o banco
 export const refreshUserSession = async (): Promise<User | null> => {
   const currentSession = getCurrentUser();
   if (!currentSession) return null;
@@ -67,9 +64,7 @@ export const refreshUserSession = async (): Promise<User | null> => {
   return currentSession;
 };
 
-export const initializeData = async () => {
-    // Função de inicialização simplificada
-};
+export const initializeData = async () => {};
 
 export const updateUserProfile = async (user: User) => {
   await dbAdapter.updateUser(user);
@@ -169,35 +164,31 @@ export const getServicesByClient = async (clientId: string): Promise<ServiceReco
   return await dbAdapter.getServices(user.id, undefined, undefined, clientId);
 };
 
-// --- AQUI ESTAVA O PROBLEMA E AQUI ESTÁ A CORREÇÃO ---
+// --- CORREÇÃO: SALVAMENTO SEGURO ---
 export const saveService = async (service: ServiceRecord) => {
-  // 1. Tenta pegar o usuário da sessão
   let user = getCurrentUser();
   
-  // 2. Se não achou na sessão, mas o serviço já veio com ownerId (da tela de Nova Corrida), criamos um objeto temporário
+  // Fallback: Se não achou na sessão, usa o ownerId que a tela NewOrder mandou
   if (!user && service.ownerId) {
-      console.warn("⚠️ Sessão não encontrada no Storage, usando ID passado pelo componente.");
-      user = { id: service.ownerId, name: 'Usuário Atual', email: '', role: 'USER', status: 'ACTIVE' };
+      console.warn("Sessão não encontrada, usando ID do componente.");
+      user = { id: service.ownerId, name: 'Usuário App', email: '', role: 'USER', status: 'ACTIVE' };
   }
 
-  // 3. Agora salvamos com segurança
   if (user) {
     service.ownerId = user.id;
-    // O Adapter (Supabase) já cuida do Log de Criação internamente
+    // O Adapter (Supabase) agora trata o log e erros
     await dbAdapter.saveService(service, user);
-    console.log("✅ Serviço salvo com sucesso!");
   } else {
-    console.error("❌ ERRO CRÍTICO: Tentativa de salvar serviço sem usuário autenticado.");
-    throw new Error("Erro de autenticação: Usuário não identificado. Faça login novamente.");
+    // ERRO CRÍTICO: Não temos usuário nem na sessão nem no componente
+    console.error("ERRO: Tentativa de salvar sem usuário.");
+    throw new Error("Sessão expirada ou usuário inválido. Tente fazer login novamente.");
   }
 };
 
 export const updateService = async (updatedService: ServiceRecord) => {
   const user = getCurrentUser();
   if (user) {
-      // CORREÇÃO DE PERFORMANCE:
-      // Removemos a busca de "todos os serviços" que travava o navegador.
-      // O SupabaseAdapter agora é responsável por buscar apenas o serviço necessário para fazer o Log.
+      // OTIMIZAÇÃO: Removemos a busca pesada aqui.
       await dbAdapter.updateService(updatedService, user);
   }
 };
@@ -214,46 +205,17 @@ export const bulkUpdateServices = async (updates: ServiceRecord[]) => {
 export const deleteService = async (id: string) => {
   const user = getCurrentUser();
   if (user) {
-      // Como o adapter updateService lida com logs, vamos tentar buscar e atualizar.
-      // Mas para evitar a lentidão de buscar TUDO, tentamos atualizar direto marcando como deletado
-      // O adapter vai buscar o registro individualmente para fazer o log
-      
-      // Criamos um objeto "dummy" apenas com o ID e o campo deletado para passar pro update
-      // O Adapter vai buscar os dados reais antes de salvar
-      const dummyService: any = { id: id, deletedAt: new Date().toISOString() };
-      
-      // Precisamos garantir que o adapter entenda que é uma atualização parcial ou busque o dado
-      // A forma mais segura sem mudar a interface é buscar ESTE serviço específico antes
-      // Mas para manter performance, vamos confiar que o updateService do Adapter faz a busca pelo ID
-      
-      // Workaround para a interface: precisamos passar um objeto ServiceRecord completo ou o adapter quebra?
-      // O adapter Supabase faz um SELECT single pelo ID. Então podemos chamar updateService direto se tivermos os dados.
-      // Se não tivermos, melhor buscar apenas ele.
-      
-      // Opção mais segura e rápida:
-      const services = await dbAdapter.getServices(user.id); // Isso ainda pode ser pesado se não tiver filtro
-      // Melhoria: Se o adapter tivesse getServiceById seria ideal.
-      // Como não tem, vamos usar a lista filtrada (que geralmente já está na memória do componente, mas aqui é service layer)
-      
-      const service = services.find(s => s.id === id);
-      if (service) {
-          service.deletedAt = new Date().toISOString();
-          await dbAdapter.updateService(service, user);
-      }
+      // Cria objeto leve apenas com o necessário para o update
+      const serviceToDelete: any = { id: id, deletedAt: new Date().toISOString() };
+      await dbAdapter.updateService(serviceToDelete, user);
   }
 };
 
 export const restoreService = async (id: string) => {
     const user = getCurrentUser();
-    if (!user) return;
-
-    // Busca todos (ou idealmente, deveria buscar só um, mas mantendo a lógica segura por enquanto)
-    const allServices = await dbAdapter.getServices(user.id); 
-    const service = allServices.find(s => s.id === id);
-    
-    if (service) {
-        service.deletedAt = undefined;
-        await dbAdapter.updateService(service, user); 
+    if (user) {
+        const serviceToRestore: any = { id: id, deletedAt: null };
+        await dbAdapter.updateService(serviceToRestore, user);
     }
 };
 
