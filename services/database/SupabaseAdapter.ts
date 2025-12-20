@@ -75,7 +75,6 @@ export class SupabaseAdapter implements DatabaseAdapter {
         };
         const { error } = await this.supabase.from('clients').upsert(payload);
         if (error) {
-            console.error("Erro Supabase (Client):", error);
             throw new Error(`Falha ao salvar cliente: ${error.message}`);
         }
     }
@@ -155,7 +154,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
         
         if (error) {
             console.error("ERRO CRÍTICO AO SALVAR SERVIÇO:", error);
-            throw new Error(`Erro no Banco de Dados: ${error.message} (Verifique se a tabela 'services' existe)`);
+            throw new Error(`Erro no Banco de Dados: ${error.message}`);
         }
         
         // Só grava log se salvou com sucesso
@@ -165,7 +164,7 @@ export class SupabaseAdapter implements DatabaseAdapter {
     }
 
     async updateService(service: ServiceRecord, user?: User): Promise<void> {
-        // 1. Busca dado antigo para log (Leve)
+        // 1. Busca dado antigo para log (Leve - busca apenas UM registro)
         const { data: oldDataRaw } = await this.supabase.from('services').select('*').eq('id', service.id).single();
         
         const payload = {
@@ -187,7 +186,6 @@ export class SupabaseAdapter implements DatabaseAdapter {
         const { error } = await this.supabase.from('services').update(payload).eq('id', service.id);
 
         if (error) {
-            console.error("Erro ao atualizar serviço:", error);
             throw new Error(`Erro ao atualizar: ${error.message}`);
         }
 
@@ -214,10 +212,17 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
             const changes: Record<string, { old: any, new: any }> = {};
             
+            // Comparações de campos
             if (oldService.cost !== service.cost) changes['Valor'] = { old: oldService.cost, new: service.cost };
             if (oldService.paid !== service.paid) changes['Status Pagto'] = { old: oldService.paid ? 'Pago' : 'Pendente', new: service.paid ? 'Pago' : 'Pendente' };
-            if (oldService.deletedAt !== service.deletedAt) {
-                 await this.logAction(service.id, service.deletedAt ? 'EXCLUSAO' : 'RESTAURACAO', {}, user);
+            
+            // Log de Lixeira
+            if (!oldService.deletedAt && service.deletedAt) {
+                 await this.logAction(service.id, 'EXCLUSAO', { info: 'Movido para lixeira' }, user);
+                 return;
+            }
+            if (oldService.deletedAt && !service.deletedAt) {
+                 await this.logAction(service.id, 'RESTAURACAO', { info: 'Restaurado da lixeira' }, user);
                  return;
             }
 
