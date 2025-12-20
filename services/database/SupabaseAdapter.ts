@@ -10,42 +10,45 @@ export class SupabaseAdapter implements DatabaseAdapter {
     }
 
     async initialize() {
-        console.log('Supabase initialized');
+        console.log('🔌 Supabase Adapter Ativo');
     }
 
     // --- Users ---
     async getUsers(): Promise<User[]> {
         const { data, error } = await this.supabase.from('users').select('*');
-        if (error) return [];
+        if (error) {
+            console.error('Erro ao buscar usuários:', error);
+            return [];
+        }
         return data as User[];
     }
 
     async saveUser(user: User): Promise<void> {
-        await this.supabase.from('users').upsert(user);
+        const { error } = await this.supabase.from('users').upsert(user);
+        if (error) throw new Error(`Erro ao salvar usuário: ${error.message}`);
     }
 
     async updateUser(user: User): Promise<void> {
-        // Atualiza tabela users
-        await this.supabase.from('users').update(user).eq('id', user.id);
+        const { error } = await this.supabase.from('users').update(user).eq('id', user.id);
+        if (error) throw new Error(`Erro ao atualizar usuário: ${error.message}`);
         
-        // Tenta atualizar a senha no Auth do Supabase também, se possível
         if (user.password) {
-            try {
-               await this.supabase.auth.updateUser({ password: user.password });
-            } catch (e) {
-                // Ignora erro se não estiver logado como o próprio usuário
-            }
+            try { await this.supabase.auth.updateUser({ password: user.password }); } catch (e) {}
         }
     }
 
     async deleteUser(id: string): Promise<void> {
-        await this.supabase.from('users').delete().eq('id', id);
+        const { error } = await this.supabase.from('users').delete().eq('id', id);
+        if (error) throw new Error(`Erro ao deletar usuário: ${error.message}`);
     }
 
     // --- Clients ---
     async getClients(ownerId: string): Promise<Client[]> {
         const { data, error } = await this.supabase.from('clients').select('*').eq('owner_id', ownerId);
-        if (error) return [];
+        if (error) {
+            console.error('Erro ao buscar clientes:', error);
+            return [];
+        }
 
         return data.map((d: any) => ({
             ...d,
@@ -70,24 +73,29 @@ export class SupabaseAdapter implements DatabaseAdapter {
             created_at: client.createdAt,
             deleted_at: client.deletedAt || null 
         };
-        await this.supabase.from('clients').upsert(payload);
+        const { error } = await this.supabase.from('clients').upsert(payload);
+        if (error) {
+            console.error("Erro Supabase (Client):", error);
+            throw new Error(`Falha ao salvar cliente: ${error.message}`);
+        }
     }
 
     async deleteClient(id: string): Promise<void> {
-        await this.supabase.from('clients').delete().eq('id', id);
+        const { error } = await this.supabase.from('clients').delete().eq('id', id);
+        if (error) throw new Error(error.message);
     }
 
     // --- LOGS HELPER ---
     private async logAction(serviceId: string, action: string, changes: any, user?: User) {
         if (!user) return; 
-        
+        // Log não deve travar a operação principal, então usamos catch silencioso no console
         await this.supabase.from('service_logs').insert({
             service_id: serviceId,
             user_name: user.name || user.email,
             action: action,
             changes: changes,
             created_at: new Date().toISOString()
-        });
+        }).catch(err => console.warn("Erro ao salvar log:", err));
     }
 
     // --- Services ---
@@ -97,7 +105,10 @@ export class SupabaseAdapter implements DatabaseAdapter {
         if (clientId) query = query.eq('client_id', clientId);
 
         const { data, error } = await query;
-        if (error) return [];
+        if (error) {
+            console.error('Erro ao buscar serviços:', error);
+            return [];
+        }
         return data.map((d: any) => ({
             ...d,
             ownerId: d.owner_id,
@@ -136,15 +147,25 @@ export class SupabaseAdapter implements DatabaseAdapter {
             deleted_at: service.deletedAt || null
         };
 
+        // Verifica existência para log
         const { data: existing } = await this.supabase.from('services').select('id').eq('id', service.id).single();
+        
+        // AQUI ESTÁ A CORREÇÃO: VERIFICAÇÃO DE ERRO NO UPSERT
         const { error } = await this.supabase.from('services').upsert(payload);
         
-        if (!error && user && !existing) {
+        if (error) {
+            console.error("ERRO CRÍTICO AO SALVAR SERVIÇO:", error);
+            throw new Error(`Erro no Banco de Dados: ${error.message} (Verifique se a tabela 'services' existe)`);
+        }
+        
+        // Só grava log se salvou com sucesso
+        if (user && !existing) {
             await this.logAction(service.id, 'CRIACAO', { info: 'Serviço criado' }, user);
         }
     }
 
     async updateService(service: ServiceRecord, user?: User): Promise<void> {
+        // 1. Busca dado antigo para log (Leve)
         const { data: oldDataRaw } = await this.supabase.from('services').select('*').eq('id', service.id).single();
         
         const payload = {
@@ -165,7 +186,13 @@ export class SupabaseAdapter implements DatabaseAdapter {
 
         const { error } = await this.supabase.from('services').update(payload).eq('id', service.id);
 
-        if (!error && user && oldDataRaw) {
+        if (error) {
+            console.error("Erro ao atualizar serviço:", error);
+            throw new Error(`Erro ao atualizar: ${error.message}`);
+        }
+
+        // Lógica de Log (Só executa se não houve erro)
+        if (user && oldDataRaw) {
             const oldService: ServiceRecord = {
                 id: oldDataRaw.id,
                 ownerId: oldDataRaw.owner_id,
@@ -188,19 +215,10 @@ export class SupabaseAdapter implements DatabaseAdapter {
             const changes: Record<string, { old: any, new: any }> = {};
             
             if (oldService.cost !== service.cost) changes['Valor'] = { old: oldService.cost, new: service.cost };
-            if (oldService.driverFee !== service.driverFee) changes['Pago Motoboy'] = { old: oldService.driverFee, new: service.driverFee };
-            if (oldService.requesterName !== service.requesterName) changes['Solicitante'] = { old: oldService.requesterName, new: service.requesterName };
             if (oldService.paid !== service.paid) changes['Status Pagto'] = { old: oldService.paid ? 'Pago' : 'Pendente', new: service.paid ? 'Pago' : 'Pendente' };
-            if (JSON.stringify(oldService.pickupAddresses) !== JSON.stringify(service.pickupAddresses)) changes['Endereços Retirada'] = { old: 'Alterado', new: 'Alterado' };
-            if (JSON.stringify(oldService.deliveryAddresses) !== JSON.stringify(service.deliveryAddresses)) changes['Endereços Entrega'] = { old: 'Alterado', new: 'Alterado' };
-            
-            if (!oldService.deletedAt && service.deletedAt) {
-                await this.logAction(service.id, 'EXCLUSAO', { info: 'Movido para lixeira' }, user);
-                return;
-            }
-            if (oldService.deletedAt && !service.deletedAt) {
-                await this.logAction(service.id, 'RESTAURACAO', { info: 'Restaurado da lixeira' }, user);
-                return;
+            if (oldService.deletedAt !== service.deletedAt) {
+                 await this.logAction(service.id, service.deletedAt ? 'EXCLUSAO' : 'RESTAURACAO', {}, user);
+                 return;
             }
 
             if (Object.keys(changes).length > 0) {
@@ -210,7 +228,8 @@ export class SupabaseAdapter implements DatabaseAdapter {
     }
 
     async deleteService(id: string, user?: User): Promise<void> {
-        await this.supabase.from('services').delete().eq('id', id);
+        const { error } = await this.supabase.from('services').delete().eq('id', id);
+        if (error) throw new Error(error.message);
     }
 
     async getServiceLogs(serviceId: string): Promise<ServiceLog[]> {
@@ -236,7 +255,8 @@ export class SupabaseAdapter implements DatabaseAdapter {
     async getExpenses(ownerId: string, start?: string, end?: string): Promise<ExpenseRecord[]> {
         let query = this.supabase.from('expenses').select('*').eq('owner_id', ownerId);
         if (start && end) query = query.gte('date', start).lte('date', end);
-        const { data } = await query;
+        const { data, error } = await query;
+        if(error) return [];
         return (data || []).map((d: any) => ({ ...d, ownerId: d.owner_id })) as ExpenseRecord[];
     }
 
@@ -249,46 +269,30 @@ export class SupabaseAdapter implements DatabaseAdapter {
             date: expense.date,
             description: expense.description
         };
-        await this.supabase.from('expenses').upsert(payload);
+        const { error } = await this.supabase.from('expenses').upsert(payload);
+        if(error) throw new Error(error.message);
     }
 
     async deleteExpense(id: string): Promise<void> {
-        await this.supabase.from('expenses').delete().eq('id', id);
+        const { error } = await this.supabase.from('expenses').delete().eq('id', id);
+        if(error) throw new Error(error.message);
     }
 
-    // --- PASSWORD RESET (REAL) ---
+    // --- Password Reset ---
     async requestPasswordReset(email: string): Promise<{ success: boolean; message?: string }> {
-        // Envia um código OTP para o email do usuário
-        const { error } = await this.supabase.auth.signInWithOtp({ 
-            email,
-            options: { shouldCreateUser: false } // Não cria conta nova, só permite login existente
-        });
-
+        const { error } = await this.supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
         if (error) return { success: false, message: error.message };
         return { success: true };
     }
 
     async completePasswordReset(email: string, code: string, newPass: string): Promise<{ success: boolean; message?: string }> {
-        // 1. Verifica o código (Token)
-        const { data, error } = await this.supabase.auth.verifyOtp({
-            email,
-            token: code,
-            type: 'email'
-        });
-
-        if (error) return { success: false, message: 'Código inválido ou expirado.' };
-
-        // 2. Se o código for válido, o usuário está logado. Agora atualizamos a senha.
+        const { data, error } = await this.supabase.auth.verifyOtp({ email, token: code, type: 'email' });
+        if (error) return { success: false, message: 'Código inválido.' };
         if (data.user) {
-            const { error: updateError } = await this.supabase.auth.updateUser({ password: newPass });
-            
-            // Também atualiza nossa tabela pública de usuários para manter sincronia
+            await this.supabase.auth.updateUser({ password: newPass });
             await this.supabase.from('users').update({ password: newPass }).eq('email', email);
-
-            if (updateError) return { success: false, message: updateError.message };
             return { success: true };
         }
-
-        return { success: false, message: 'Erro ao validar sessão.' };
+        return { success: false, message: 'Erro de sessão.' };
     }
 }
