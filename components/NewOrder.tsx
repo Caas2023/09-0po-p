@@ -18,14 +18,12 @@ const getLocalDateStr = (d: Date) => {
     return `${year}-${month}-${day}`;
 };
 
-// --- MÁSCARA DE MOEDA (UX) ---
 const formatCurrency = (value: string) => {
     const numericValue = value.replace(/\D/g, '');
     const amount = Number(numericValue) / 100;
     return amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };
 
-// --- CONVERTER MOEDA PARA FLOAT (PARA SALVAR) ---
 const parseCurrency = (value: string) => {
     if (!value) return 0;
     const cleanValue = value.replace(/[R$\s.]/g, '').replace(',', '.');
@@ -35,7 +33,7 @@ const parseCurrency = (value: string) => {
 export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState('');
-  const [isLoading, setIsLoading] = useState(false); // NOVO: Trava o botão enquanto salva
+  const [isLoading, setIsLoading] = useState(false); // Trava o botão para não clicar 2x
   
   const selectedClient = clients.find(c => c.id === selectedClientId);
 
@@ -60,7 +58,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
         const data = await getClients();
         setClients(data);
       } catch (error) {
-        toast.error("Erro ao carregar clientes. Verifique sua conexão.");
+        toast.error("Erro ao carregar clientes.");
       }
     };
     loadClients();
@@ -97,7 +95,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLoading) return; // Evita clicar duas vezes
+    if (isLoading) return;
 
     if (!selectedClientId) {
       toast.error('Selecione um cliente.');
@@ -112,7 +110,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
       return;
     }
 
-    setIsLoading(true); // Ativa o carregamento
+    setIsLoading(true); // Bloqueia o botão
 
     try {
         const newService: ServiceRecord = {
@@ -133,12 +131,12 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
           status: 'PENDING'
         };
 
-        // Tenta salvar. Se der erro no banco, vai cair no CATCH abaixo.
+        // Tenta salvar. Se o banco recusar, vai dar erro aqui.
         await saveService(newService);
         
         toast.success('Corrida registrada com sucesso!');
         
-        // Limpa o formulário
+        // Limpa tudo
         setManualOrderId('');
         setRequester('');
         setPickupAddresses(['']);
@@ -152,9 +150,9 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
     } catch (error: any) {
         console.error("Erro ao salvar:", error);
         // Mostra o erro real na tela
-        toast.error(`Não foi possível salvar: ${error.message || 'Erro desconhecido'}`);
+        toast.error(`Não salvou: ${error.message || 'Erro desconhecido'}`);
     } finally {
-        setIsLoading(false); // Destrava o botão
+        setIsLoading(false); // Libera o botão
     }
   };
 
@@ -175,7 +173,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
 
       <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 space-y-6">
         
-        {/* Seleção de Cliente */}
         <div>
             <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Selecione o Cliente</label>
             <div className="relative">
@@ -193,68 +190,36 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
             </div>
         </div>
 
-        {/* Dados Gerais */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Data</label>
                 <div className="relative">
                     <Calendar size={16} className="absolute left-3 top-3 text-slate-400" />
-                    <input 
-                        type="date" 
-                        className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500" 
-                        value={date} 
-                        onChange={e => setDate(e.target.value)} 
-                    />
+                    <input type="date" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500" value={date} onChange={e => setDate(e.target.value)} />
                 </div>
             </div>
             <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Nº Pedido</label>
                 <div className="relative">
                     <Hash size={16} className="absolute left-3 top-3 text-slate-400" />
-                    <input 
-                        type="text" 
-                        className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500 uppercase" 
-                        placeholder="# EX: 1234"
-                        value={manualOrderId} 
-                        onChange={e => setManualOrderId(e.target.value)} 
-                    />
+                    <input type="text" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500 uppercase" placeholder="# EX: 1234" value={manualOrderId} onChange={e => setManualOrderId(e.target.value)} />
                 </div>
             </div>
             <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Solicitado Por</label>
-                <input 
-                    type="text" 
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500" 
-                    placeholder="Nome do funcionário"
-                    value={requester} 
-                    onChange={e => setRequester(e.target.value)} 
-                />
+                <input type="text" className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white outline-none focus:border-blue-500" placeholder="Nome do funcionário" value={requester} onChange={e => setRequester(e.target.value)} />
             </div>
         </div>
 
-        {/* Endereços */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-900/30">
                 <h3 className="font-bold text-blue-600 dark:text-blue-400 text-sm flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500"></div> Coleta</h3>
                 {pickupAddresses.map((addr, idx) => (
                     <div key={idx} className="flex gap-2 relative">
                         <MapPin size={16} className="absolute left-3 top-3 text-blue-500" />
-                        <input 
-                            className="w-full pl-9 pr-36 p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" 
-                            value={addr} 
-                            onChange={e => handleAddressChange('pickup', idx, e.target.value)} 
-                            placeholder="Endereço de retirada" 
-                        />
+                        <input className="w-full pl-9 pr-36 p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" value={addr} onChange={e => handleAddressChange('pickup', idx, e.target.value)} placeholder="Endereço de retirada" />
                         {selectedClient?.address && (
-                            <button
-                                type="button"
-                                onClick={() => handleAddressChange('pickup', idx, selectedClient.address || '')}
-                                className="absolute right-8 top-1.5 px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs font-bold rounded-md flex items-center gap-1 transition-colors border border-blue-300"
-                                title="Usar endereço do cadastro"
-                            >
-                                <Building size={12} />
-                                Endereço Cliente
-                            </button>
+                            <button type="button" onClick={() => handleAddressChange('pickup', idx, selectedClient.address || '')} className="absolute right-8 top-1.5 px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs font-bold rounded-md flex items-center gap-1 transition-colors border border-blue-300" title="Usar endereço do cadastro"><Building size={12} /> Endereço Cliente</button>
                         )}
                         {pickupAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('pickup', idx)} className="absolute right-2 top-2.5"><X size={16} className="text-red-400" /></button>}
                     </div>
@@ -267,22 +232,9 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
                 {deliveryAddresses.map((addr, idx) => (
                     <div key={idx} className="flex gap-2 relative">
                         <MapPin size={16} className="absolute left-3 top-3 text-emerald-500" />
-                        <input 
-                            className="w-full pl-9 pr-36 p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:border-emerald-500 outline-none" 
-                            value={addr} 
-                            onChange={e => handleAddressChange('delivery', idx, e.target.value)} 
-                            placeholder="Endereço de destino" 
-                        />
+                        <input className="w-full pl-9 pr-36 p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:border-emerald-500 outline-none" value={addr} onChange={e => handleAddressChange('delivery', idx, e.target.value)} placeholder="Endereço de destino" />
                         {selectedClient?.address && (
-                            <button
-                                type="button"
-                                onClick={() => handleAddressChange('delivery', idx, selectedClient.address || '')}
-                                className="absolute right-8 top-1.5 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-bold rounded-md flex items-center gap-1 transition-colors border border-emerald-300"
-                                title="Usar endereço do cadastro"
-                            >
-                                <Building size={12} />
-                                Endereço Cliente
-                            </button>
+                            <button type="button" onClick={() => handleAddressChange('delivery', idx, selectedClient.address || '')} className="absolute right-8 top-1.5 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-bold rounded-md flex items-center gap-1 transition-colors border border-emerald-300" title="Usar endereço do cadastro"><Building size={12} /> Endereço Cliente</button>
                         )}
                         {deliveryAddresses.length > 1 && <button type="button" onClick={() => handleRemoveAddress('delivery', idx)} className="absolute right-2 top-2.5"><X size={16} className="text-red-400" /></button>}
                     </div>
@@ -291,7 +243,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
             </div>
         </div>
 
-        {/* Financeiro */}
         <div>
             <h3 className="font-bold text-slate-800 dark:text-white mb-4 text-sm border-b border-slate-200 dark:border-slate-700 pb-2">Financeiro e Adicionais</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -299,26 +250,14 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
                     <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-1">Valor da Corrida</label>
                     <div className="relative">
                         <DollarSign size={16} className="absolute left-3 top-3 text-emerald-500" />
-                        <input 
-                            type="text" 
-                            className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white font-bold text-lg focus:border-emerald-500 outline-none" 
-                            value={cost} 
-                            onChange={e => handleMoneyInput(e.target.value, setCost)} 
-                            placeholder="R$ 0,00" 
-                        />
+                        <input type="text" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white font-bold text-lg focus:border-emerald-500 outline-none" value={cost} onChange={e => handleMoneyInput(e.target.value, setCost)} placeholder="R$ 0,00" />
                     </div>
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-red-500 dark:text-red-400 mb-1">Pago ao Motoboy</label>
                     <div className="relative">
                         <Bike size={16} className="absolute left-3 top-3 text-red-500" />
-                        <input 
-                            type="text" 
-                            className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white font-bold text-lg focus:border-red-500 outline-none" 
-                            value={driverFee} 
-                            onChange={e => handleMoneyInput(e.target.value, setDriverFee)} 
-                            placeholder="R$ 0,00" 
-                        />
+                        <input type="text" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white font-bold text-lg focus:border-red-500 outline-none" value={driverFee} onChange={e => handleMoneyInput(e.target.value, setDriverFee)} placeholder="R$ 0,00" />
                     </div>
                 </div>
             </div>
@@ -328,13 +267,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
                     <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">VALOR ESPERA</label>
                     <div className="relative">
                         <Timer size={14} className="absolute left-3 top-3 text-slate-500" />
-                        <input 
-                            type="text" 
-                            className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" 
-                            value={waitingTime} 
-                            onChange={e => handleMoneyInput(e.target.value, setWaitingTime)} 
-                            placeholder="R$ 0,00" 
-                        />
+                        <input type="text" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" value={waitingTime} onChange={e => handleMoneyInput(e.target.value, setWaitingTime)} placeholder="R$ 0,00" />
                     </div>
                     <p className="text-[10px] text-slate-500 mt-1">Soma no total do sistema</p>
                 </div>
@@ -342,13 +275,7 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
                     <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">TAXA EXTRA</label>
                     <div className="relative">
                         <DollarSign size={14} className="absolute left-3 top-3 text-slate-500" />
-                        <input 
-                            type="text" 
-                            className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" 
-                            value={extraFee} 
-                            onChange={e => handleMoneyInput(e.target.value, setExtraFee)} 
-                            placeholder="R$ 0,00" 
-                        />
+                        <input type="text" className="w-full pl-9 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" value={extraFee} onChange={e => handleMoneyInput(e.target.value, setExtraFee)} placeholder="R$ 0,00" />
                     </div>
                     <p className="text-[10px] text-slate-500 mt-1">Soma apenas no PDF do Cliente</p>
                 </div>
@@ -366,7 +293,6 @@ export const NewOrder: React.FC<NewOrderProps> = ({ currentUser }) => {
             </div>
         </div>
 
-        {/* Pagamento */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-3 border border-slate-200 dark:border-slate-600 rounded-xl">
                 <div className="grid grid-cols-3 gap-2">
